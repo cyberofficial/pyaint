@@ -157,6 +157,12 @@ class Bot:
             }
         }
 
+        # MSPaint Mode state (double-click on palette instead of single click)
+        self.mspaint_mode = {
+            'enabled': False,         # whether the feature is active
+            'delay': 0.5              # delay between clicks in seconds (default 0.5)
+        }
+
         # Canvas and palette will be initialized later
         self._canvas = None
         self._palette = None
@@ -790,52 +796,77 @@ class Bot:
             print(f"[DEBUG] Selecting color: {c}")
             print(f"[DEBUG] Color in palette: {self._palette is not None and c in self._palette.colors}")
             print(f"[DEBUG] Color Button enabled: {self.color_button.get('enabled', False)}")
+            print(f"[DEBUG] Color Button Okay enabled: {self.color_button_okay.get('enabled', False)}")
             print(f"[DEBUG] Custom colors box: {self._custom_colors}")
             
-            # Check if palette exists and color is in palette before accessing it
-            if self._palette is not None and c in self._palette.colors:
-                print(f"[DEBUG] Using palette click at: {self._palette.colors_pos[c]}")
-                pyautogui.click(self._palette.colors_pos[c])
-            else:
-                # Try to find the color in the spectrum map with tolerance
-                # Use tolerance of 20 (same as calibration default) to ensure accurate color selection
-                spectrum_pos = self.get_calibrated_color_position(c, tolerance=20)
-                if spectrum_pos:
-                    print(f"[DEBUG] Using spectrum click at: {spectrum_pos}")
-                    pyautogui.click(spectrum_pos)
-                    # Wait for the application to register the color selection (use same delay as color button)
-                    delay = self.color_button.get('delay', 0.1)
-                    print(f"[DEBUG] Waiting {delay} seconds after spectrum click...")
-                    time.sleep(delay)
-                else:
-                    # Check if manual color selection occurred (color_button_okay enabled)
-                    # If so, skip the keyboard input method since user already selected the color
-                    # Also skip if color_calibration.json exists (calibration data available)
-                    if not self.color_button_okay.get('enabled', False) and not os.path.exists('color_calibration.json'):
-                        # Fallback to keyboard input method
-                        try:
-                            cc_box = self._custom_colors
-                            center_x = cc_box[0] + cc_box[2] // 2
-                            center_y = cc_box[1] + cc_box[3] // 2
-                            print(f"[DEBUG] Spectrum not available - clicking center of box at: ({center_x}, {center_y})")
-                            pyautogui.click((center_x, center_y), clicks=3, interval=.15)
-                        except:
-                            raise NoCustomColorsError('Bot could not continue because custom colors are not initialized')
-                        print(f"[DEBUG] Using keyboard input method - typing RGB: {c}")
-                        pyautogui.press('tab', presses=7, interval=.05)
-                        for val in c:
-                            numbers = (d for d in str(val))
-                            for n in numbers:
-                                pyautogui.press(str(n))
-                            pyautogui.press('tab')
-                        pyautogui.press('tab')
-                        pyautogui.press('enter')
-                        pyautogui.PAUSE = 0.0
+            # Only perform automatic color selection if Color Button Okay is NOT enabled
+            # When Color Button Okay is enabled, user is expected to manually select=color
+            if not self.color_button_okay.get('enabled', False):
+                # Check if palette exists and color is in palette before accessing it
+                if self._palette is not None and c in self._palette.colors:
+                    px, py = self._palette.colors_pos[c]
+                    print(f"[DEBUG] Using palette click at: {(px, py)}")
+                    
+                    # MSPaint Mode: Double-click on palette instead of single click
+                    if self.mspaint_mode.get('enabled', False):
+                        # First click
+                        pyautogui.click((px, py))
+                        # Wait for configured delay between clicks
+                        mspaint_delay = self.mspaint_mode.get('delay', 0.5)
+                        print(f"[MSPaintMode] Waiting {mspaint_delay} seconds between double-click...")
+                        time.sleep(mspaint_delay)
+                        # Second click on the same position
+                        pyautogui.click((px, py))
+                        print(f"[MSPaintMode] Double-click completed at {(px, py)}")
+                        # Use color button delay after double-click
+                        delay = self.color_button.get('delay', 0.1)
+                        print(f"[DEBUG] Waiting {delay} seconds after palette double-click...")
+                        time.sleep(delay)
                     else:
-                        if os.path.exists('color_calibration.json'):
-                            print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
+                        # Simple click (original behavior)
+                        pyautogui.click((px, py))
+                        # Wait for application to register=color selection
+                        delay = self.color_button.get('delay', 0.1)
+                        print(f"[DEBUG] Waiting {delay} seconds after palette click...")
+                        time.sleep(delay)
+                else:
+                    # Try to find the color in the spectrum map with tolerance
+                    # Use tolerance of 20 (same as calibration default) to ensure accurate color selection
+                    spectrum_pos = self.get_calibrated_color_position(c, tolerance=20)
+                    if spectrum_pos:
+                        print(f"[DEBUG] Using spectrum click at: {spectrum_pos}")
+                        pyautogui.click(spectrum_pos)
+                        # Wait for the application to register the color selection (use same delay as color button)
+                        delay = self.color_button.get('delay', 0.1)
+                        print(f"[DEBUG] Waiting {delay} seconds after spectrum click...")
+                        time.sleep(delay)
+                    else:
+                        # Check if manual color selection occurred (color_calibration.json exists)
+                        # If so, skip the keyboard input method since user already selected the color
+                        if not os.path.exists('color_calibration.json'):
+                            # Fallback to keyboard input method
+                            try:
+                                cc_box = self._custom_colors
+                                center_x = cc_box[0] + cc_box[2] // 2
+                                center_y = cc_box[1] + cc_box[3] // 2
+                                print(f"[DEBUG] Spectrum not available - clicking center of box at: ({center_x}, {center_y})")
+                                pyautogui.click((center_x, center_y), clicks=3, interval=.15)
+                            except:
+                                raise NoCustomColorsError('Bot could not continue because custom colors are not initialized')
+                            print(f"[DEBUG] Using keyboard input method - typing RGB: {c}")
+                            pyautogui.press('tab', presses=7, interval=.05)
+                            for val in c:
+                                numbers = (d for d in str(val))
+                                for n in numbers:
+                                    pyautogui.press(str(n))
+                                pyautogui.press('tab')
+                            pyautogui.press('tab')
+                            pyautogui.press('enter')
+                            pyautogui.PAUSE = 0.0
                         else:
-                            print(f"[DEBUG] Manual color selection detected - skipping keyboard input method")
+                            print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
+            else:
+                print(f"[DEBUG] Color Button Okay enabled - skipping automatic color selection (user should manually select)")
 
             # If Color Button Okay Mode is enabled, click "Set Okay" button after color selection
             try:
@@ -1073,44 +1104,54 @@ class Bot:
                 break
 
             # Log color change
+            print(f"[DEBUG] Color Button Okay enabled: {self.color_button_okay.get('enabled', False)}")
             print(f"Switching to color {c} for test draw")
 
-            # Check if palette exists and color is in palette before accessing it
-            if self._palette is not None and c in self._palette.colors:
-                pyautogui.click(self._palette.colors_pos[c])
-            else:
-                # Try to find the color in the spectrum map
-                spectrum_pos = self._find_nearest_spectrum_color(c)
-                if spectrum_pos:
-                    pyautogui.click(spectrum_pos)
-                    # Wait for the application to register the color selection (use same delay as color button)
-                    delay = self.color_button.get('delay', 0.1)
-                    time.sleep(delay)
+            # Only perform automatic color selection if Color Button Okay is NOT enabled
+            # When Color Button Okay is enabled, user is expected to manually select the color
+            if not self.color_button_okay.get('enabled', False):
+                # Check if palette exists and color is in palette before accessing it
+                if self._palette is not None and c in self._palette.colors:
+                    px, py = self._palette.colors_pos[c]
+                    print(f"[DEBUG] Using palette click at: {(px, py)}")
+                    # Use mouseDown/mouseUp with delay for more reliable clicks (like color button mode)
+                    pyautogui.mouseDown(px, py, button='left')
+                    time.sleep(0.08)
+                    pyautogui.mouseUp(px, py, button='left')
                 else:
-                    # Check if manual color selection occurred (color_button_okay enabled)
-                    # If so, skip the keyboard input method since user already selected the color
-                    # Also skip if color_calibration.json exists (calibration data available)
-                    if not self.color_button_okay.get('enabled', False) and not os.path.exists('color_calibration.json'):
-                        # Fallback to keyboard input method
-                        try:
-                            cc_box = self._custom_colors
-                            pyautogui.click((cc_box[0] + cc_box[2] // 2, cc_box[1] + cc_box[3] // 2), clicks=3, interval=.15)
-                        except:
-                            raise NoCustomColorsError('Bot could not continue because custom colors are not initialized')
-                        pyautogui.press('tab', presses=7, interval=.05)
-                        for val in c:
-                            numbers = (d for d in str(val))
-                            for n in numbers:
-                                pyautogui.press(str(n))
-                            pyautogui.press('tab')
-                        pyautogui.press('tab')
-                        pyautogui.press('enter')
-                        pyautogui.PAUSE = 0.0
+                    # Try to find the color in the spectrum map
+                    spectrum_pos = self._find_nearest_spectrum_color(c)
+                    if spectrum_pos:
+                        print(f"[DEBUG] Using spectrum click at: {spectrum_pos}")
+                        pyautogui.click(spectrum_pos)
+                        # Wait for the application to register the color selection (use same delay as color button)
+                        delay = self.color_button.get('delay', 0.1)
+                        time.sleep(delay)
                     else:
-                        if os.path.exists('color_calibration.json'):
-                            print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
+                        # Check if color_calibration.json exists (calibration data available)
+                        # If so, skip the keyboard input method since calibration should find the color
+                        if not os.path.exists('color_calibration.json'):
+                            # Fallback to keyboard input method
+                            try:
+                                cc_box = self._custom_colors
+                                print(f"[DEBUG] Using keyboard input method - clicking center of box at: ({cc_box[0] + cc_box[2] // 2}, {cc_box[1] + cc_box[3] // 2})")
+                                pyautogui.click((cc_box[0] + cc_box[2] // 2, cc_box[1] + cc_box[3] // 2), clicks=3, interval=.15)
+                            except:
+                                raise NoCustomColorsError('Bot could not continue because custom colors are not initialized')
+                            print(f"[DEBUG] Using keyboard input method - typing RGB: {c}")
+                            pyautogui.press('tab', presses=7, interval=.05)
+                            for val in c:
+                                numbers = (d for d in str(val))
+                                for n in numbers:
+                                    pyautogui.press(str(n))
+                                pyautogui.press('tab')
+                            pyautogui.press('tab')
+                            pyautogui.press('enter')
+                            pyautogui.PAUSE = 0.0
                         else:
-                            print(f"[DEBUG] Manual color selection detected - skipping keyboard input method")
+                            print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
+            else:
+                print(f"[DEBUG] Color Button Okay enabled - skipping automatic color selection (user should manually select)")
 
             for line_idx, line in enumerate(lines):
                 if lines_drawn >= max_lines:

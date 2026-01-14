@@ -436,15 +436,16 @@ class Bot:
             print(f"[Calibration] Error loading calibration data: {e}")
             return False
     
-    def get_calibrated_color_position(self, target_rgb: Tuple[int, int, int], tolerance: int = 20) -> Optional[Tuple[int, int]]:
+    def get_calibrated_color_position(self, target_rgb: Tuple[int, int, int], tolerance: int = 20, k_neighbors: int = 4) -> Optional[Tuple[int, int]]:
         """
         Find the exact calibrated color position for a target RGB value.
-        Uses exact match with tolerance before falling back to nearest color.
-        This solves the issue where the bot picks wrong colors (e.g., white instead of yellow).
+        Uses exact match with tolerance before falling back to spatial interpolation.
+        This solves the issue where distinct colors pick the same spot in the custom color spectrum.
         
         Parameters:
             target_rgb: Tuple (r, g, b) representing the target color
             tolerance: Maximum color difference to consider a match (default 20)
+            k_neighbors: Number of nearest colors to use for interpolation (default 4)
         
         Returns:
             (x, y) coordinates of the best match, or None if no calibration data exists
@@ -452,7 +453,7 @@ class Bot:
         if self.color_calibration_map is None or not self.color_calibration_map:
             return None
         
-        # First, try to find exact match within tolerance
+        # First, try to find exact match within tolerance using Manhattan distance
         for color, pos in self.color_calibration_map.items():
             diff = abs(color[0] - target_rgb[0]) + abs(color[1] - target_rgb[1]) + abs(color[2] - target_rgb[2])
             if diff <= tolerance:
@@ -460,26 +461,42 @@ class Bot:
                 print(f"[Calibration] Exact match found: {target_rgb} ~ {color} (diff={diff}) at {pos}")
                 return pos
         
-        # If no exact match, find the nearest color (original fallback behavior)
-        best_color = min(
-            self.color_calibration_map.keys(),
-            key=lambda c: math.sqrt(
-                (c[0] - target_rgb[0]) ** 2 +
-                (c[1] - target_rgb[1]) ** 2 +
-                (c[2] - target_rgb[2]) ** 2
+        # If no exact match, use k-nearest neighbors with weighted spatial interpolation
+        # This prevents distinct colors from all mapping to the same spot
+        color_distances = []
+        for color, pos in self.color_calibration_map.items():
+            # Calculate Euclidean distance in RGB space
+            distance = math.sqrt(
+                (color[0] - target_rgb[0]) ** 2 +
+                (color[1] - target_rgb[1]) ** 2 +
+                (color[2] - target_rgb[2]) ** 2
             )
-        )
+            color_distances.append((distance, color, pos))
         
-        # Calculate and log the distance
-        distance = math.sqrt(
-            (best_color[0] - target_rgb[0]) ** 2 +
-            (best_color[1] - target_rgb[1]) ** 2 +
-            (best_color[2] - target_rgb[2]) ** 2
-        )
+        # Sort by distance and get k nearest neighbors
+        color_distances.sort(key=lambda x: x[0])
+        neighbors = color_distances[:k_neighbors]
         
-        print(f"[Calibration] Target: {target_rgb}, Nearest fallback: {best_color}, Distance: {distance:.2f}")
+        # Calculate inverse distance weights (closer colors have more influence)
+        # Add a small epsilon to prevent division by zero
+        epsilon = 0.0001
+        weights = [1.0 / (dist + epsilon) for dist, _, _ in neighbors]
+        total_weight = sum(weights)
         
-        return self.color_calibration_map[best_color]
+        # Normalize weights
+        normalized_weights = [w / total_weight for w in weights]
+        
+        # Calculate weighted position
+        weighted_x = sum(w * pos[0] for w, (_, _, pos) in zip(normalized_weights, neighbors))
+        weighted_y = sum(w * pos[1] for w, (_, _, pos) in zip(normalized_weights, neighbors))
+        
+        # Log the interpolation details
+        nearest_color = neighbors[0][1]
+        nearest_dist = neighbors[0][0]
+        print(f"[Calibration] Target: {target_rgb}, Nearest: {nearest_color} (dist={nearest_dist:.2f})")
+        print(f"[Calibration] Using {k_neighbors}-nearest interpolation to ({weighted_x:.1f}, {weighted_y:.1f})")
+        
+        return (int(weighted_x), int(weighted_y))
     
     # def test(self):
     #     box = self._canvas

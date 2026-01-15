@@ -1245,7 +1245,9 @@ class SetupWindow:
 
                 self._listener.stop()
                 self.parent.deiconify()
+                self.parent.wm_state('normal')
                 self._root.deiconify()
+                self._root.wm_state('normal')
 
     def _validate_dimensions(self, value):
         return re.fullmatch(r'\d*', value) is not None

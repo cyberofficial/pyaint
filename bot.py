@@ -322,13 +322,16 @@ class Bot:
         # Press mouse down at the start of grid (to grab the slider)
         start_x = grid_x
         start_y = grid_y
+        
+        # Press mouse down to grab slider
         pyautogui.mouseDown(start_x, start_y, button='left')
         time.sleep(0.1)  # Small delay to ensure mouse is pressed
         
-        # Track progress for console output
+        # Track progress for console output and ETA calculation
         total_steps = ((grid_width // step) + 1) * ((grid_height // step) + 1)
         current_step = 0
         last_progress = 0
+        calib_start_time = time.time()  # Track start time for ETA
         
         # Loop through grid coordinates with step size
         for y in range(grid_y, grid_y + grid_height, step):
@@ -339,7 +342,17 @@ class Bot:
                 # Print progress every 10% or every 100 steps, whichever is more frequent
                 progress_percent = (current_step / total_steps) * 100
                 if (progress_percent - last_progress >= 10) or (current_step % 100 == 0):
-                    print(f"[Calibration] Progress: {current_step}/{total_steps} ({progress_percent:.1f}%) - {len(self.color_calibration_map)} colors mapped")
+                    # Calculate ETA based on elapsed time
+                    elapsed_time = time.time() - calib_start_time
+                    if current_step > 0 and progress_percent < 100:
+                        avg_time_per_step = elapsed_time / current_step
+                        steps_remaining = total_steps - current_step
+                        eta_seconds = steps_remaining * avg_time_per_step
+                        eta_str = self._format_time(eta_seconds)
+                    else:
+                        eta_str = "calculating..."
+                    
+                    print(f"[Calibration] Progress: {current_step}/{total_steps} ({progress_percent:.1f}%) - {len(self.color_calibration_map)} colors mapped - ETA: {eta_str}")
                     last_progress = progress_percent
                 # Check for termination (ESC key pressed)
                 if self.terminate:

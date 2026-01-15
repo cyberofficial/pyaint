@@ -1323,6 +1323,14 @@ class Window:
             self.tools['calibration_settings'] = {}
         self.tools['calibration_settings']['step_size'] = step
         
+        # Minimize window then start calibration
+        messagebox.showinfo(self.title, f'Press ESC to stop calibration.')
+        self._root.iconify()
+        time.sleep(1)  # Small delay before starting to allow window to minimize
+        
+        # Track calibration start time for ETA calculation
+        self._calibration_start_time = time.time()
+        
         # Create and start calibration thread
         self._calibration_thread_obj = Thread(target=self._calibration_thread)
         self._calibration_thread_obj.start()
@@ -1344,17 +1352,29 @@ class Window:
                 current = self.bot._calibration_progress.get('current', 0)
                 if total > 0:
                     percent = (current / total) * 100
-                    self.tlabel['text'] = f"Calibrating: {current}/{total} colors ({percent:.1f}%)"
+                    # Calculate ETA based on elapsed time
+                    elapsed_time = time.time() - self._calibration_start_time
+                    if current > 0 and percent < 100:
+                        avg_time_per_color = elapsed_time / current
+                        colors_remaining = total - current
+                        eta_seconds = colors_remaining * avg_time_per_color
+                        eta_str = self.bot._format_time(eta_seconds)
+                    else:
+                        eta_str = "calculating..."
+                    self.tlabel['text'] = f"Calibrating: {current}/{total} colors ({percent:.1f}%) - ETA: {eta_str}"
                 else:
-                    self.tlabel['text'] = f"Calibrating: {current} colors..."
+                    elapsed_time = time.time() - self._calibration_start_time
+                    self.tlabel['text'] = f"Calibrating: {current} colors... (Time: {elapsed_time:.0f}s)"
         elif self.busy:
             # Calibration finished or cancelled
+            total_time = time.time() - self._calibration_start_time
             if self.bot.terminate:
-                self.tlabel['text'] = 'Calibration cancelled by user (ESC pressed)'
+                self.tlabel['text'] = f'Calibration cancelled by user (ESC pressed) - Time: {total_time:.0f}s'
                 # Reset terminate flag for next calibration
                 self.bot.terminate = False
             else:
-                self.tlabel['text'] = 'Calibration completed!'
+                num_colors = len(self.bot.color_calibration_map) if hasattr(self.bot, 'color_calibration_map') else 0
+                self.tlabel['text'] = f'Calibration completed! {num_colors} colors mapped - Time: {total_time:.0f}s'
             self._set_busy(False)
 
     def _calibration_thread(self):
@@ -1399,6 +1419,9 @@ class Window:
             traceback.print_exc()
             messagebox.showerror(self.title, f'Calibration failed: {str(e)}')
         finally:
+            # Restore window after calibration completes (even if cancelled or failed)
+            self._root.deiconify()
+            self._root.wm_state('normal')
             self._set_busy(False)
 
     def simple_test_draw(self):

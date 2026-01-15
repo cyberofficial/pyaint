@@ -322,16 +322,14 @@ class Bot:
         # Press mouse down at the start of grid (to grab the slider)
         start_x = grid_x
         start_y = grid_y
-        
-        # Press mouse down to grab slider
         pyautogui.mouseDown(start_x, start_y, button='left')
         time.sleep(0.1)  # Small delay to ensure mouse is pressed
         
-        # Track progress for console output and ETA calculation
+        # Track progress for console output
         total_steps = ((grid_width // step) + 1) * ((grid_height // step) + 1)
         current_step = 0
         last_progress = 0
-        calib_start_time = time.time()  # Track start time for ETA
+        start_time = time.time()  # Track start time for ETA calculation
         
         # Loop through grid coordinates with step size
         for y in range(grid_y, grid_y + grid_height, step):
@@ -342,13 +340,24 @@ class Bot:
                 # Print progress every 10% or every 100 steps, whichever is more frequent
                 progress_percent = (current_step / total_steps) * 100
                 if (progress_percent - last_progress >= 10) or (current_step % 100 == 0):
-                    # Calculate ETA based on elapsed time
-                    elapsed_time = time.time() - calib_start_time
-                    if current_step > 0 and progress_percent < 100:
+                    # Calculate ETA
+                    elapsed_time = time.time() - start_time
+                    if current_step > 0:
                         avg_time_per_step = elapsed_time / current_step
-                        steps_remaining = total_steps - current_step
-                        eta_seconds = steps_remaining * avg_time_per_step
-                        eta_str = self._format_time(eta_seconds)
+                        remaining_steps = total_steps - current_step
+                        estimated_remaining = remaining_steps * avg_time_per_step
+                        
+                        # Format time remaining
+                        if estimated_remaining < 60:
+                            eta_str = f"{estimated_remaining:.1f}s"
+                        elif estimated_remaining < 3600:
+                            minutes = int(estimated_remaining // 60)
+                            seconds = estimated_remaining % 60
+                            eta_str = f"{minutes}:{seconds:02.0f}"
+                        else:
+                            hours = int(estimated_remaining // 3600)
+                            minutes = int((estimated_remaining % 3600) // 60)
+                            eta_str = f"{hours}:{minutes:02.0f}h"
                     else:
                         eta_str = "calculating..."
                     
@@ -383,7 +392,21 @@ class Bot:
         # Release mouse up at the end
         pyautogui.mouseUp(button='left')
         
+        # Calculate actual time and show completion message
+        actual_time = time.time() - start_time
+        if actual_time < 60:
+            actual_str = f"{actual_time:.1f}s"
+        elif actual_time < 3600:
+            minutes = int(actual_time // 60)
+            seconds = actual_time % 60
+            actual_str = f"{minutes}:{seconds:02.0f}"
+        else:
+            hours = int(actual_time // 3600)
+            minutes = int((actual_time % 3600) // 60)
+            actual_str = f"{hours}:{minutes:02.0f}h"
+        
         print(f"[Calibration] Calibration complete. Mapped {len(self.color_calibration_map)} colors.")
+        print(f"[Calibration] Total time: {actual_str}")
         
         return self.color_calibration_map
     
@@ -896,7 +919,43 @@ class Bot:
                         else:
                             print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
             else:
-                print(f"[DEBUG] Color Button Okay enabled - skipping automatic color selection (user should manually select)")
+                # Color Button Okay is enabled, but we still need to select color in spectrum before clicking okay
+                print(f"[DEBUG] Color Button Okay enabled - selecting color in spectrum before clicking okay")
+                
+                # Try to find the color in the spectrum map
+                spectrum_pos = self.get_calibrated_color_position(c, tolerance=20)
+                if spectrum_pos:
+                    print(f"[DEBUG] Using spectrum click at: {spectrum_pos}")
+                    pyautogui.click(spectrum_pos)
+                    # Wait for the application to register the color selection (use same delay as color button)
+                    delay = self.color_button.get('delay', 0.1)
+                    print(f"[DEBUG] Waiting {delay} seconds after spectrum click...")
+                    time.sleep(delay)
+                else:
+                    # Check if manual color selection occurred (color_calibration.json exists)
+                    # If so, skip keyboard input method since user already selected the color
+                    if not os.path.exists('color_calibration.json'):
+                        # Fallback to keyboard input method
+                        try:
+                            cc_box = self._custom_colors
+                            center_x = cc_box[0] + cc_box[2] // 2
+                            center_y = cc_box[1] + cc_box[3] // 2
+                            print(f"[DEBUG] Spectrum not available - clicking center of box at: ({center_x}, {center_y})")
+                            pyautogui.click((center_x, center_y), clicks=3, interval=.15)
+                        except:
+                            raise NoCustomColorsError('Bot could not continue because custom colors are not initialized')
+                        print(f"[DEBUG] Using keyboard input method - typing RGB: {c}")
+                        pyautogui.press('tab', presses=7, interval=.05)
+                        for val in c:
+                            numbers = (d for d in str(val))
+                            for n in numbers:
+                                pyautogui.press(str(n))
+                                pyautogui.press('tab')
+                        pyautogui.press('tab')
+                        pyautogui.press('enter')
+                        pyautogui.PAUSE = 0.0
+                    else:
+                        print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
 
             # If Color Button Okay Mode is enabled, click "Set Okay" button after color selection
             try:
@@ -1180,8 +1239,69 @@ class Bot:
                             pyautogui.PAUSE = 0.0
                         else:
                             print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
-            else:
-                print(f"[DEBUG] Color Button Okay enabled - skipping automatic color selection (user should manually select)")
+
+            # Only click okay button if Color Button Okay is enabled
+            if self.color_button_okay.get('enabled', False):
+                # Click to Color Button Okay button to confirm color selection
+                try:
+                    cbo = self.color_button_okay
+                    if cbo.get('coords'):
+                        cx, cy = cbo['coords']
+                        print(f"[ColorButtonOkay] attempting click at {(cx, cy)} with mods={cbo.get('modifiers')}")
+
+                        # Track which modifiers were pressed so we can release them in reverse order
+                        pressed_modifiers = []
+
+                        # Press modifiers immediately before the click
+                        modifier_keys = [('ctrl', 'ctrl'), ('alt', 'alt'), ('shift', 'shift')]
+                        for mod_key, pygui_key in modifier_keys:
+                            if cbo['modifiers'].get(mod_key):
+                                pyautogui.keyDown(pygui_key)
+                                pressed_modifiers.append(pygui_key)
+                                print(f"[ColorButtonOkay] pressed modifier: {pygui_key}")
+
+                        # Click the button with modifiers active
+                        print(f"[ColorButtonOkay] performing mouseDown at {(cx, cy)}")
+                        pyautogui.mouseDown(cx, cy, button='left')
+                        time.sleep(0.08)
+                        pyautogui.mouseUp(cx, cy, button='left')
+                        print(f"[ColorButtonOkay] mouse click performed at {(cx, cy)}")
+
+                        # Release modifiers immediately after the click with robust handling
+                        for pygui_key in reversed(pressed_modifiers):
+                            pyautogui.keyUp(pygui_key)
+                            print(f"[ColorButtonOkay] released modifier: {pygui_key}")
+                            time.sleep(0.05)  # Small delay to ensure each key release is registered
+
+                        # Brute-force release all modifiers as backup (in case tracked list missed any)
+                        try:
+                            pyautogui.keyUp('shift')
+                            time.sleep(0.05)
+                            pyautogui.keyUp('alt')
+                            time.sleep(0.05)
+                            pyautogui.keyUp('ctrl')
+                            time.sleep(0.05)
+                            print(f"[ColorButtonOkay] force-released all modifiers as backup")
+                        except:
+                            pass
+
+                        # Additional delay to ensure OS processes all key release events
+                        time.sleep(0.1)
+
+                        # Wait for configured delay after clicking the Color Button Okay (use same delay as Color Button)
+                        delay = self.color_button_okay.get('delay', 0.1)
+                        print(f"[ColorButtonOkay] waiting {delay} seconds before starting to draw...")
+                        time.sleep(delay)
+
+                except Exception as e:
+                    print(f"[ColorButtonOkay] Error during color button okay click: {e}")
+                    # Ensure modifiers are released even if there's an error
+                    try:
+                        pyautogui.keyUp('shift')
+                        pyautogui.keyUp('alt')
+                        pyautogui.keyUp('ctrl')
+                    except:
+                        pass
 
             for line_idx, line in enumerate(lines):
                 if lines_drawn >= max_lines:

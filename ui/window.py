@@ -212,7 +212,7 @@ class Window:
         self._options = (
             # ('Confidence', defaults[0], 0, 1),
             ('Delay', defaults[0], 0, 1),
-            ('Pixel Size', defaults[1], 3, 50),
+            ('Pixel Size', defaults[1], 1, 50),
             ('Precision', defaults[2], 0, 1),
             ('Jump Delay', defaults[3] if len(defaults) > 3 else 0.5, 0, 2),
         )

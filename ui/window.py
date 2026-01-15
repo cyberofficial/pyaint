@@ -345,6 +345,16 @@ class Window:
         self._redraw_region_label.grid(column=0, row=curr_row, columnspan=2, padx=5, pady=5, sticky='w')
         curr_row += 1
 
+        # Delete Files section
+        Label(self._cframe, text='File Management', font=Window.TITLE_FONT).grid(column=0, row=curr_row, columnspan=2, padx=5, pady=5, sticky='w')
+        curr_row += 1
+
+        self._delete_calib_btn = Button(self._cframe, text='Remove Calibration', command=self._on_delete_calibration)
+        self._delete_calib_btn.grid(column=0, row=curr_row, padx=5, pady=5, sticky='ew')
+        self._reset_config_btn = Button(self._cframe, text='Reset Config', command=self._on_reset_config)
+        self._reset_config_btn.grid(column=1, row=curr_row, padx=5, pady=5, sticky='ew')
+        curr_row += 1
+
         # Initialize redraw state
         self._redraw_region = None  # Will store (x1, y1, x2, y2) canvas coordinates
         self._redraw_picking = False  # Flag for when we're in region selection mode
@@ -1605,6 +1615,42 @@ class Window:
         """Cancel redraw region selection"""
         self._redraw_picking = False
         self.tlabel['text'] = "Redraw region selection cancelled."
+
+    def _on_delete_calibration(self):
+        """Remove the color calibration file"""
+        from tkinter import messagebox
+        if messagebox.askyesno(self.title, "Are you sure you want to remove the color calibration file?\n\nThis will delete: color_calibration.json"):
+            try:
+                import os
+                calib_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'color_calibration.json')
+                if os.path.exists(calib_path):
+                    os.remove(calib_path)
+                    self.tlabel['text'] = "Color calibration file removed successfully."
+                    # Clear calibration data from bot
+                    self.bot.color_calibration_map = None
+                    print(f"[File Management] Removed calibration file: {calib_path}")
+                else:
+                    self.tlabel['text'] = "No calibration file found to remove."
+            except Exception as e:
+                self.tlabel['text'] = f"Error removing calibration file: {str(e)}"
+                print(f"[File Management] Error: {e}")
+
+    def _on_reset_config(self):
+        """Delete config.json file to reset to defaults"""
+        from tkinter import messagebox
+        if messagebox.askyesno(self.title, "Are you sure you want to reset to default settings?\n\nThis will delete: config.json\n\nAll your tool positions, settings, and preferences will be lost."):
+            try:
+                import os
+                config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
+                if os.path.exists(config_path):
+                    os.remove(config_path)
+                    self.tlabel['text'] = "Config file removed successfully. Please restart the application to use defaults."
+                    print(f"[File Management] Removed config file: {config_path}")
+                else:
+                    self.tlabel['text'] = "No config file found to remove."
+            except Exception as e:
+                self.tlabel['text'] = f"Error removing config file: {str(e)}"
+                print(f"[File Management] Error: {e}")
 
     @is_free
     def _redraw_draw_thread(self):

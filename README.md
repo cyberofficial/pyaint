@@ -21,6 +21,7 @@ An intelligent drawing automation tool that converts images into precise mouse m
 - **Pause & Resume** - Mid-stroke recovery from exact interruption point
 - **Advanced Palette Config** - Manual or automatic color center positioning
 - **Color Calibration** - Spectrum scanning for accurate custom colors
+- **File Management** - Remove calibration data and reset configuration with UI buttons
 
 ## Installation
 

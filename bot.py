@@ -220,6 +220,15 @@ class Bot:
         # This allows clicking on specific colors in the spectrum instead of using keyboard input
         self._spectrum_map = self._scan_spectrum(ccbox)
         print(f"[Spectrum] Scanned {len(self._spectrum_map)} unique colors from custom colors spectrum")
+        
+        # Load color calibration data if file exists
+        if os.path.exists('color_calibration.json'):
+            try:
+                with open('color_calibration.json', 'r') as f:
+                    calibration_json = json.load(f)
+                print(f"[Color Calibration] Loaded {len(calibration_json)} mapped colors")
+            except Exception as e:
+                print(f"[Color Calibration] Error loading calibration data: {e}")
     
     def _scan_spectrum(self, ccbox):
         """
@@ -705,7 +714,9 @@ class Bot:
                 print("[Calibration] Loading calibration data from color_calibration.json")
                 self.load_color_calibration('color_calibration.json')
             else:
-                print("[Calibration] Calibration data already loaded from color_calibration.json")
+                print(f"[Calibration] Calibration data already loaded from color_calibration.json ({len(self.color_calibration_map)} colors)")
+        else:
+            print("[Calibration] No calibration data available")
 
         # Create progress overlay window
         self.create_progress_overlay()
@@ -1232,7 +1243,9 @@ class Bot:
                 print("[Calibration] Loading calibration data from color_calibration.json")
                 self.load_color_calibration('color_calibration.json')
             else:
-                print("[Calibration] Calibration data already loaded from color_calibration.json")
+                print(f"[Calibration] Calibration data already loaded from color_calibration.json ({len(self.color_calibration_map)} colors)")
+        else:
+            print("[Calibration] No calibration data available")
 
         # Create progress overlay window
         self.create_progress_overlay()

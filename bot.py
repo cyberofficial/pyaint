@@ -113,6 +113,7 @@ class Bot:
         self.config_file = config_file
         self.drawing = False  # Flag to indicate if currently drawing
         self.skip_first_color = False  # Skip first color when drawing
+        self.jump_threshold = 5  # Pixel distance threshold for jump detection (default 5)
 
         # Drawing state for pause/resume
         self.draw_state = {
@@ -1112,7 +1113,7 @@ class Bot:
                 start_pos = line[0]
                 if last_stroke_end is not None:
                     jump_distance = ((start_pos[0] - last_stroke_end[0]) ** 2 + (start_pos[1] - last_stroke_end[1]) ** 2) ** 0.5
-                    if jump_distance > 5:  # More than 5 pixels apart
+                    if jump_distance > self.jump_threshold:
                         print(f"Large jump detected ({jump_distance:.1f} pixels) - adding {self.settings[Bot.JUMP_DELAY]}s delay")
                         time.sleep(self.settings[Bot.JUMP_DELAY])
 
@@ -1494,7 +1495,7 @@ class Bot:
                     # Check for jump delay if this isn't the first stroke in this color
                     if last_end_pos is not None:
                         jump_distance = ((start_pos[0] - last_end_pos[0]) ** 2 + (start_pos[1] - last_end_pos[1]) ** 2) ** 0.5
-                        if jump_distance > 5:  # Same threshold as in draw method
+                        if jump_distance > self.jump_threshold:
                             estimated_seconds += self.settings[Bot.JUMP_DELAY]
 
                     # Update last position for next jump check

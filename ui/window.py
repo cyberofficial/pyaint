@@ -335,6 +335,16 @@ class Window:
         self._calib_step_entry.bind('<Return>', self._on_calib_step_change)
         curr_row += 1
 
+        # Jump Threshold Setting
+        Label(self._cframe, text='Jump Thresh (px)', font=Window.TITLE_FONT).grid(column=0, row=curr_row, padx=5, pady=5, sticky='w')
+        self._jump_threshold_var = StringVar()
+        self._jump_threshold_var.set('5')
+        self._jump_threshold_entry = Entry(self._cframe, textvariable=self._jump_threshold_var, width=5)
+        self._jump_threshold_entry.grid(column=1, row=curr_row, padx=5, pady=5, sticky='ew')
+        self._jump_threshold_entry.bind('<FocusOut>', self._on_jump_threshold_change)
+        self._jump_threshold_entry.bind('<Return>', self._on_jump_threshold_change)
+        curr_row += 1
+
         # Redraw Region section
         Label(self._cframe, text='Redraw Region', font=Window.TITLE_FONT).grid(column=0, row=curr_row, columnspan=2, padx=5, pady=5, sticky='w')
         curr_row += 1
@@ -751,6 +761,45 @@ class Window:
 
         self.tlabel['text'] = Window._SLIDER_TOOLTIPS[index]
 
+    def _on_jump_threshold_change(self, event=None):
+        """Handle jump threshold change"""
+        try:
+            val_str = self._jump_threshold_var.get().strip()
+            if not val_str:
+                return  # Empty input, don't update
+            
+            val = int(val_str)
+            
+            # Validate range: 1 to 100 pixels
+            if val < 1:
+                val = 1
+                self._jump_threshold_var.set(str(val))
+            elif val > 100:
+                val = 100
+                self._jump_threshold_var.set(str(val))
+            
+            # Update bot state
+            self.bot.jump_threshold = val
+            
+            # Save to tools config
+            if 'drawing_settings' not in self.tools:
+                self.tools['drawing_settings'] = {}
+            self.tools['drawing_settings']['jump_threshold'] = val
+            
+            try:
+                if not getattr(self, '_initializing', False):
+                    with open(self._config_path, 'w', encoding='utf-8') as f:
+                        json.dump(self.tools, f, ensure_ascii=False, indent=4)
+            except Exception as e:
+                print(f"Failed to save config: {e}")
+            
+            self.tlabel['text'] = f'Jump threshold updated to {val} pixels. Cursor jumps larger than this will trigger delay.'
+            
+        except ValueError:
+            # Invalid input, revert to current bot setting
+            self._jump_threshold_var.set(str(self.bot.jump_threshold))
+            self.tlabel['text'] = 'Invalid jump threshold. Please enter a number between 1 and 100.'
+
     def _on_calib_step_change(self, event=None):
         """Handle calibration step size change"""
         try:
@@ -839,6 +888,15 @@ class Window:
                 self._calib_step_var.set(str(calib_step))
             else:
                 self._calib_step_var.set('2')
+
+            # Load jump threshold setting
+            if 'drawing_settings' in self.tools:
+                jump_threshold = self.tools['drawing_settings'].get('jump_threshold', 5)
+                self.bot.jump_threshold = jump_threshold
+                self._jump_threshold_var.set(str(jump_threshold))
+            else:
+                self.bot.jump_threshold = 5
+                self._jump_threshold_var.set('5')
 
             # Load saved drawing settings
             if 'drawing_settings' in self.tools:

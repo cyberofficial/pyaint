@@ -28,15 +28,16 @@ from tkinter import (
     END
 )
 from tkinter.ttk import (
-    LabelFrame, 
-    Frame, 
-    Scale, 
-    Label, 
-    OptionMenu, 
-    Scrollbar, 
-    Button, 
-    Checkbutton, 
-    Entry
+    LabelFrame,
+    Frame,
+    Scale,
+    Label,
+    OptionMenu,
+    Scrollbar,
+    Button,
+    Checkbutton,
+    Entry,
+    Progressbar
 )
 
 
@@ -1323,6 +1324,9 @@ class Window:
             self.tools['calibration_settings'] = {}
         self.tools['calibration_settings']['step_size'] = step
         
+        # Create calibration progress overlay window
+        self._create_calibration_overlay()
+        
         # Minimize window then start calibration
         messagebox.showinfo(self.title, f'Press ESC to stop calibration.')
         self._root.iconify()
@@ -1336,12 +1340,106 @@ class Window:
         self._calibration_thread_obj.start()
         self._manage_calibration_thread()
 
+    def _create_calibration_overlay(self):
+        """
+        Create and show an always-on-top progress overlay window for color calibration.
+        The window displays current calibration progress and appears above the custom color box location.
+        """
+        try:
+            # Get custom color box location for positioning
+            custom_colors_box = self.tools.get('Custom Colors', {}).get('box')
+            if not custom_colors_box:
+                # Fallback to top center of screen if box location not available
+                screen_width = self._root.winfo_screenwidth()
+                x_position = (screen_width - 240) // 2
+                y_position = 10
+            else:
+                # Position above the custom color box
+                if isinstance(custom_colors_box, list):
+                    box_x = custom_colors_box[0]
+                    box_y = custom_colors_box[1]
+                else:
+                    box_x = custom_colors_box.get('x', 0)
+                    box_y = custom_colors_box.get('y', 0)
+                
+            # Position overlay above the box (with some offset)
+            window_width = 400
+            window_height = 20
+            # Align right edge of overlay with right edge of custom colors box
+            box_right = custom_colors_box[2] if isinstance(custom_colors_box, list) else box_x + (custom_colors_box.get('width', 0) if isinstance(custom_colors_box, dict) else 0)
+            x_position = box_right - window_width
+            y_position = box_y - 30  # 30 pixels above the box
+            
+            # Create the overlay window
+            self._calib_overlay_window = tkinter.Toplevel(self._root)
+            self._calib_overlay_window.title("Calibration Progress")
+
+            # Set window to always on top and remove decorations
+            self._calib_overlay_window.attributes("-topmost", True)
+            self._calib_overlay_window.overrideredirect(True)
+
+            # Set window size and position
+            window_width = 400
+            window_height = 20
+            self._calib_overlay_window.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
+
+            # Create a dark background frame with border
+            border_frame = tkinter.Frame(
+                self._calib_overlay_window,
+                bg="#4a4a4a",
+                width=window_width,
+                height=window_height
+            )
+            border_frame.pack(fill=tkinter.BOTH, expand=True)
+
+            # Inner frame for content
+            overlay_frame = tkinter.Frame(
+                border_frame,
+                bg="#2c2c2c",
+                width=window_width - 2,
+                height=window_height - 2
+            )
+            overlay_frame.place(x=1, y=1, width=window_width - 2, height=window_height - 2)
+
+            # Create centered label for progress text
+            self._calib_overlay_label = tkinter.Label(
+                overlay_frame,
+                text="Initializing...",
+                bg="#2c2c2c",
+                fg="#00ff00",  # Green text for progress
+                font=("Arial", 9, "bold"),
+                relief=tkinter.FLAT
+            )
+            self._calib_overlay_label.place(relx=0.5, rely=0.5, anchor=tkinter.CENTER)
+
+            # Keep window responsive
+            self._calib_overlay_window.update()
+
+            print("[CalibrationOverlay] Overlay window created")
+            return self._calib_overlay_window
+
+        except Exception as e:
+            print(f"[CalibrationOverlay] Error creating overlay: {e}")
+            return None
+
+    def _close_calibration_overlay(self):
+        """Close the calibration progress overlay window"""
+        try:
+            if hasattr(self, '_calib_overlay_window') and self._calib_overlay_window is not None:
+                self._calib_overlay_window.destroy()
+                self._calib_overlay_window = None
+                self._calib_overlay_label = None
+                print("[CalibrationOverlay] Overlay window closed")
+        except Exception as e:
+            print(f"[CalibrationOverlay] Error closing overlay: {e}")
+
     def _manage_calibration_thread(self):
         """Manage calibration thread and update progress"""
         if getattr(self, '_calibration_thread_obj', None) is not None and self._calibration_thread_obj.is_alive() and self.busy:
             # Check if calibration was cancelled
             if self.bot.terminate:
                 self.tlabel['text'] = 'Calibration cancelled by user (ESC pressed)'
+                self._close_calibration_overlay()
                 self._set_busy(False)
                 return
             
@@ -1361,13 +1459,29 @@ class Window:
                         eta_str = self.bot._format_time(eta_seconds)
                     else:
                         eta_str = "calculating..."
+                    # Update overlay label
+                    if hasattr(self, '_calib_overlay_label') and self._calib_overlay_label is not None:
+                        self._calib_overlay_label['text'] = f"Calibrating: {current}/{total} ({percent:.1f}%) - ETA: {eta_str}"
+                        if hasattr(self, '_calib_overlay_window') and self._calib_overlay_window is not None:
+                            try:
+                                self._calib_overlay_window.update()  # Force UI update
+                            except Exception as e:
+                                print(f"[CalibrationOverlay] Error updating window: {e}")
                     self.tlabel['text'] = f"Calibrating: {current}/{total} colors ({percent:.1f}%) - ETA: {eta_str}"
                 else:
                     elapsed_time = time.time() - self._calibration_start_time
+                    if hasattr(self, '_calib_overlay_label') and self._calib_overlay_label is not None:
+                        self._calib_overlay_label['text'] = f"Calibrating: {current} colors... ({elapsed_time:.0f}s)"
+                        if hasattr(self, '_calib_overlay_window') and self._calib_overlay_window is not None:
+                            try:
+                                self._calib_overlay_window.update()  # Force UI update
+                            except Exception as e:
+                                print(f"[CalibrationOverlay] Error updating window: {e}")
                     self.tlabel['text'] = f"Calibrating: {current} colors... (Time: {elapsed_time:.0f}s)"
         elif self.busy:
             # Calibration finished or cancelled
             total_time = time.time() - self._calibration_start_time
+            self._close_calibration_overlay()
             if self.bot.terminate:
                 self.tlabel['text'] = f'Calibration cancelled by user (ESC pressed) - Time: {total_time:.0f}s'
                 # Reset terminate flag for next calibration
@@ -1419,6 +1533,8 @@ class Window:
             traceback.print_exc()
             messagebox.showerror(self.title, f'Calibration failed: {str(e)}')
         finally:
+            # Close calibration overlay window
+            self._close_calibration_overlay()
             # Restore window after calibration completes (even if cancelled or failed)
             self._root.deiconify()
             self._root.wm_state('normal')

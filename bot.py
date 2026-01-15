@@ -355,7 +355,10 @@ class Bot:
             for x in range(grid_x, grid_x + grid_width, step):
                 # Increment step counter
                 current_step += 1
-                
+
+                # Update progress continuously for UI updates
+                self._calibration_progress['current'] = current_step
+
                 # Print progress every 10% or every 100 steps, whichever is more frequent
                 progress_percent = (current_step / total_steps) * 100
                 if (progress_percent - last_progress >= 10) or (current_step % 100 == 0):
@@ -365,7 +368,7 @@ class Bot:
                         avg_time_per_step = elapsed_time / current_step
                         remaining_steps = total_steps - current_step
                         estimated_remaining = remaining_steps * avg_time_per_step
-                        
+
                         # Format time remaining
                         if estimated_remaining < 60:
                             eta_str = f"{estimated_remaining:.1f}s"
@@ -379,7 +382,7 @@ class Bot:
                             eta_str = f"{hours}:{minutes:02.0f}h"
                     else:
                         eta_str = "calculating..."
-                    
+
                     print(f"[Calibration] Progress: {current_step}/{total_steps} ({progress_percent:.1f}%) - {len(self.color_calibration_map)} colors mapped - ETA: {eta_str}")
                     last_progress = progress_percent
                 # Check for termination (ESC key pressed)
@@ -391,17 +394,17 @@ class Bot:
                     except:
                         pass
                     return self.color_calibration_map
-                
+
                 # Move mouse to the current grid position
                 pyautogui.moveTo(x, y)
                 time.sleep(0.01)  # Small delay to allow UI to update
-                
+
                 # Capture 1x1 pixel at preview point
                 try:
                     pixel_img = ImageGrab.grab(bbox=preview_bbox)
                     r, g, b = pixel_img.getpixel((0, 0))
                     color = (r, g, b)
-                    
+
                     # Store the calibration data
                     self.color_calibration_map[color] = (x, y)
                 except Exception as e:

@@ -91,6 +91,11 @@ class Window:
         self._config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
 
         self._root.title(title)
+        # Center the window on screen
+        screen_width = self._root.winfo_screenwidth()
+        screen_height = self._root.winfo_screenheight()
+        x = (screen_width - w) // 2
+        y = (screen_height - h) // 2
         self._root.geometry(f"{w}x{h}+{x}+{y}")
         
         self._root.columnconfigure(0, weight=1, uniform='column')

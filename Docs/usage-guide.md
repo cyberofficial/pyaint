@@ -71,7 +71,7 @@ The palette defines the available colors for drawing.
 - **Valid Positions**: Toggle which palette cells are valid (advanced)
 - **Manual Centers**: Pick exact center points for precision (advanced)
 - **Auto-Estimate**: Quickly calculate center points (advanced)
-- **Precision Estimate**: Maximum accuracy using reference points (advanced)
+- **Interactive Palette Extraction**: Precise, user-friendly configuration with anchor points (advanced)
 
 #### 2. Canvas
 
@@ -431,13 +431,107 @@ Global hotkey for emergency stop.
 4. **Use Layered Mode** for better visual results on complex images
 5. **Fine-tune Jump Delay** to prevent unintended strokes
 
+### Interactive Palette Extraction
+
+The Interactive Palette Extraction tool provides precise, user-friendly palette configuration with anchor point placement.
+
+**When to Use:**
+- Your palette has irregular spacing between colors
+- You need maximum accuracy for color positioning
+- Auto-estimate or manual centers aren't providing sufficient precision
+- You want to visually verify anchor points before extraction
+
+#### Phase 1: Region Selection
+
+1. Click **"Edit Colors"** → **"Precision Estimate"** in the Setup Window
+2. Read the instructions dialog and click OK
+3. Click the **upper-left corner** of your palette region
+4. Click the **bottom-right corner** of your palette region
+5. The selected area will be captured and displayed in the extraction window
+
+**Tips:**
+- Select a tight region around your palette to maximize accuracy
+- Make sure the entire palette (all colors) is within the selected region
+- The region can include some background, but should be primarily the palette
+
+#### Phase 2: Grid Configuration
+
+1. Enter the **number of rows** in your palette grid
+2. Enter the **number of columns** in your palette grid
+3. Click **"Set Grid"** to proceed
+4. A visual grid overlay will appear on your palette image
+
+**Tips:**
+- Count rows and columns carefully - incorrect values will cause mismatched positions
+- Use "Back to Region" if you need to redefine the selected area
+- Grid lines help verify the structure before placing anchors
+
+#### Phase 3: Anchor Placement
+
+1. Click anywhere on the palette image to place an anchor point
+2. A dialog will appear asking which grid cell this anchor represents
+3. Enter the grid cell number (1 to total cells) to link the anchor
+4. The anchor appears as a green dot with the cell number
+5. Interpolated positions appear as yellow circles
+
+**Anchor Rules:**
+- **Unlimited anchors** - add as many as needed for accuracy
+- Click an existing anchor to remove it
+- Each anchor must be linked to a specific grid cell
+- The system automatically calculates all non-anchor positions
+
+**Workflow:**
+1. Start with minimum anchors (2 for 1D grids, 4 for 2D grids)
+2. View the yellow interpolated positions
+3. Add more anchors in areas where interpolation is inaccurate
+4. Use "Clear Anchors" to start over if needed
+5. Continue until all yellow circles align with actual color centers
+
+**Best Practices:**
+- Place anchors at the most reliable color centers (most stable positions)
+- Add correction anchors along edges first, then interior if needed
+- The minimum required anchors for extraction:
+  - **1D grid (1×n or n×1)**: 2 anchors (first and last)
+  - **2D grid (m×n)**: 4 anchors (4 corners)
+- More anchors = higher accuracy, but diminishing returns
+
+#### Phase 4: Extraction
+
+1. When satisfied with anchor placement, click **"Extract Colors"**
+2. The system will extract center positions for all valid colors
+3. Results are returned to the main palette configuration
+4. Temp file is cleaned up automatically
+
+**Back Navigation:**
+- **"Back to Grid"**: Return to phase 2 to adjust grid dimensions
+- **"Clear Anchors"**: Remove all anchors and start placement over
+
+#### Session Recovery
+
+The tool auto-saves your work to `palette_extraction_temp.json`:
+
+**What's Saved:**
+- Selected region coordinates
+- Grid dimensions
+- All anchor positions
+- All interpolated positions
+
+**Recovery:**
+- If you close the window accidentally, reopen to restore session
+- Choose "Restore" when prompted to continue where you left off
+- All progress is preserved including anchors and calculations
+
+**Cleanup:**
+- Temp file is automatically deleted after successful extraction
+- Manually delete `palette_extraction_temp.json` to start completely fresh
+
 ### Palette Setup Tips
 
 1. **Use Auto-Estimate** for quick initial setup on regular grids
-2. **Use Precision Estimate** for maximum accuracy on irregular palettes
+2. **Use Interactive Extraction** for maximum accuracy on irregular palettes
 3. **Toggle Invalid Positions** to exclude broken or unused colors
 4. **Preview captured regions** to verify correct configuration
-5. **For Precision Estimate with multiple rows**, ensure you have at least 2 valid rows
+5. **For complex palettes**, start with Interactive Extraction for best results
 
 ### Color Calibration Tips
 

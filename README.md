@@ -87,10 +87,38 @@ python main.py
 
 ### Palette Setup
 
-- **Manual Centers** - Pick exact color positions
-- **Auto-Estimate** - Quick grid calculation
-- **Precision Estimate** - Reference-point based accuracy  
-✓ Toggle valid/invalid palette cells
+#### Manual Centers Mode
+Click on color cells, then click exact center points on your palette. System automatically moves to next color.
+
+#### Auto-Estimate Centers
+Automatically calculate grid centers using cell dimensions. Quick but less accurate.
+
+#### Interactive Palette Extraction
+**Precise, user-friendly palette configuration with anchor point placement**
+
+- Click upper-left and bottom-right corners to define palette region
+- Enter grid dimensions (rows × columns)
+- Place anchor points by clicking anywhere on palette image
+  - Click to place anchor, then enter grid cell number to link it
+  - No limit on number of anchors - add as many as needed for accuracy
+  - Click existing anchor to remove it
+- Real-time interpolation shows yellow circles for calculated positions
+- Smart interpolation (linear for 1D grids, bilinear for 2D grids)
+- "Clear Anchors" to start over
+- "Back to Grid" to adjust dimensions
+- "Extract Colors" to finalize and return to main application
+
+**Key Differences:**
+| Feature | Old Precision Estimate | New Interactive Extraction |
+|---------|---------------------|-------------------------|
+| User experience | Click 5-6 reference points | Click anywhere, enter grid number |
+| Anchor limit | Exactly 4 required | Unlimited - add as many as needed |
+| Flexibility | Fixed sequence | Add anywhere, adjust anytime |
+| Accuracy | Linear/bilinear interpolation | Smart interpolation from all anchors |
+| Recovery | None | Auto-saves to temp file, restores on restart |
+
+#### Toggle Valid/Invalid
+Mark color cells as active (green) or inactive (red).
 
 ## Architecture
 

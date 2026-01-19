@@ -1,5 +1,7 @@
 import re
 import utils
+import json
+import os
 
 from PIL import (
     Image, 
@@ -12,6 +14,7 @@ from tkinter import (
     Button, 
     Toplevel, 
     messagebox, 
+    simpledialog,
     font, 
     END,
     Canvas,
@@ -582,393 +585,45 @@ class SetupWindow:
         print(f'Auto-estimated centers for {len(self._manual_centers)} colors')
     
     def _start_precision_estimate(self):
-        """Start precision estimate mode using reference point selection"""
-        if not self._valid_positions:
-            messagebox.showwarning(self.title, 'Please mark at least one color as valid first!')
-            return
-        
-        # Clear existing manual centers
-        self._manual_centers = {}
-        
-        # Determine number of rows and columns with valid positions
-        rows_with_valid = {i // self.cols for i in self._valid_positions}
-        cols_with_valid = {i % self.cols for i in self._valid_positions}
-        num_valid_rows = len(rows_with_valid)
-        num_valid_cols = len(cols_with_valid)
-        
-        # Determine which mode to use based on row AND column count
-        if num_valid_cols == 1 and num_valid_rows >= 2:
-            # Single column, multiple rows - use single_column mode
-            self._precision_mode = 'single_column'
-        elif num_valid_rows == 1 and num_valid_cols >= 2:
-            # Single row, multiple columns - use 1_row mode
-            self._precision_mode = '1_row'
-        elif num_valid_rows >= 2 and num_valid_cols >= 2:
-            # Multiple rows and columns - use multi_row mode
-            self._precision_mode = 'multi_row'
-        else:
-            messagebox.showwarning(self.title, 'No valid rows found!')
-            return
-        
-        # Get instructions for this mode
-        instructions = {
-            'single_column': [
-                ('Click on CENTER of FIRST color box in the FIRST row.', 'first_row_first_col'),
-                ('Click on CENTER of FIRST color box in the SECOND row.', 'second_row_first_col'),
-                ('Click on CENTER of FIRST color box in the LAST row.', 'last_row_first_col')
-            ],
-            '1_row': [
-                ('Click on CENTER of FIRST color box (leftmost) in the row.', 'first_col'),
-                ('Click on CENTER of SECOND color box in the row.', 'second_col'),
-                ('Click on CENTER of LAST color box (rightmost) in the row.', 'last_col')
-            ],
-            'multi_row': []
-        }
-        
-        # Dynamically generate multi_row instructions based on valid row count
-        if self._precision_mode == 'multi_row':
-            # First row points
-            instructions['multi_row'].append(('Click on CENTER of FIRST color box (leftmost) in the FIRST row.', 'first_row_first_col'))
-            instructions['multi_row'].append(('Click on CENTER of SECOND color box in the FIRST row.', 'first_row_second_col'))
-            instructions['multi_row'].append(('Click on CENTER of LAST color box (rightmost) in the FIRST row.', 'first_row_last_col'))
-            
-            # Row points - only add second_row_first_col if there are more than 2 rows
-            if num_valid_rows > 2:
-                instructions['multi_row'].append(('Click on CENTER of FIRST color box in the SECOND row.', 'second_row_first_col'))
-            
-            # Last row points
-            instructions['multi_row'].append(('Click on CENTER of FIRST color box (leftmost) in the LAST row.', 'last_row_first_col'))
-            instructions['multi_row'].append(('Click on CENTER of LAST color box (rightmost) in the LAST row.', 'last_row_last_col'))
-        
-        # Start the precision estimation process
-        self._precision_points = []
-        self._precision_step = 0
-        
-        # Store instructions as instance variable for access in click handler
-        self._precision_instructions = instructions[self._precision_mode]
-        
-        # Show all instructions in one dialog
-        self._show_precision_dialog(self._precision_instructions)
+        """Start interactive palette extraction mode"""
+        # Launch the new interactive palette extractor
+        from ui.setup import InteractivePaletteExtractor
+        self._extractor = InteractivePaletteExtractor(
+            parent=self._root,
+            bot=self.bot,
+            current_tool=self._current_tool,
+            tool_name=self._tool_name,
+            valid_positions=self._valid_positions,
+            palette_box=self.palette_box,
+            on_complete=self._on_extraction_complete
+        )
     
-    def _show_precision_dialog(self, instructions_list):
-        """Show precision estimation instructions - all at once"""
-        # Build instruction text
-        instruction_text = "Click on the following points in order:\n\n"
-        for i, (step_name, point_type) in enumerate(instructions_list):
-            instruction_text += f"{i+1}. {step_name}\n"
-        
-        instruction_text += "\nClick OK to begin, then click the points on your palette in the order shown above."
-        
-        result = messagebox.askokcancel('Precision Estimate Instructions', instruction_text)
-        
-        if result:
-            # User confirmed - minimize window and start listening
-            self._color_sel_window.iconify()
-            
-            # Set up for first point
-            self._precision_step = 0
-            point_type = instructions_list[0][1]
-            self._current_point_type = point_type
-            
-            # Start listening for click
-            self._coords = []
-            self._clicks = 0
-            self._required_clicks = 1
-            self._listener = Listener(on_click=self._on_precision_pick_click)
-            self._listener.start()
-        else:
-            # User cancelled
-            self._cancel_precision_estimate()
-    
-    def _show_precision_instruction(self):
-        """Show instruction for next point to pick"""
-        instructions = {
-            'single_column': [
-                ('Click on CENTER of FIRST color box in the FIRST row.', 'first_row_first_col'),
-                ('Click on CENTER of FIRST color box in the SECOND row.', 'second_row_first_col'),
-                ('Click on CENTER of FIRST color box in the LAST row.', 'last_row_first_col')
-            ],
-            '1_row': [
-                ('Click on CENTER of FIRST color box (leftmost) in the row.', 'first_col'),
-                ('Click on CENTER of SECOND color box in the row.', 'second_col'),
-                ('Click on CENTER of LAST color box (rightmost) in the row.', 'last_col')
-            ],
-            'multi_row': [
-                ('Click on CENTER of FIRST color box (leftmost) in the FIRST row.', 'first_row_first_col'),
-                ('Click on CENTER of SECOND color box in the FIRST row.', 'first_row_second_col'),
-                ('Click on CENTER of LAST color box (rightmost) in the FIRST row.', 'first_row_last_col'),
-                ('Click on CENTER of FIRST color box in the SECOND row.', 'second_row_first_col'),
-                ('Click on CENTER of FIRST color box (leftmost) in the LAST row.', 'last_row_first_col'),
-                ('Click on CENTER of LAST color box (rightmost) in the LAST row.', 'last_row_last_col')
-            ]
-        }
-        
-        if self._precision_step < len(instructions[self._precision_mode]):
-            instruction, point_type = instructions[self._precision_mode][self._precision_step]
-            self._current_point_type = point_type
-            
-            # Show the messagebox with proper parent and window management
-            self._color_sel_window.deiconify()
-            self._color_sel_window.lift()
-            self._root.after(50, lambda: self._show_precision_dialog(instruction))
-        else:
-            # All points collected, calculate centers
-            self._calculate_precision_centers()
-    
-    def _on_precision_pick_click(self, x, y, _, pressed):
-        """Handle click for precision estimate point selection"""
-        if pressed:
-            self._color_sel_window.bell()
-            print(x, y)
-            self._clicks += 1
-            self._coords += x, y
-            
-            if self._clicks == self._required_clicks:
-                # Store the picked point (relative to palette box)
-                center_x = self._coords[0] - self.palette_box[0]
-                center_y = self._coords[1] - self.palette_box[1]
-                self._precision_points.append({
-                    'type': self._current_point_type,
-                    'coords': (center_x, center_y)
-                })
-                
-                # DEBUG: Log detailed information
-                print(f'[DEBUG] Screen click: ({x}, {y})')
-                print(f'[DEBUG] Palette box: {self.palette_box}')
-                print(f'[DEBUG] Relative center: ({center_x}, {center_y})')
-                print(f'[DEBUG] Point type: {self._current_point_type}')
-                
-                # Move to next step
-                self._precision_step += 1
-                
-                # Check if we have all required points
-                # Get the instruction list to determine required point count
-                if self._precision_mode == 'single_column':
-                    required_points = 3
-                elif self._precision_mode == '1_row':
-                    required_points = 3
-                else:  # multi_row
-                    # Get the dynamically generated instruction count
-                    required_points = len(self._precision_instructions)
-                
-                if self._precision_step >= required_points:
-                    # All points collected, calculate centers
-                    self._listener.stop()
-                    self._calculate_precision_centers()
-                else:
-                    # Continue to next point - no dialog, just wait for next click
-                    self._clicks = 0
-                    self._coords = []
-                    # Set point type for next step
-                    if self._precision_mode == 'single_column':
-                        point_types = ['first_row_first_col', 'second_row_first_col', 'last_row_first_col']
-                    elif self._precision_mode == '1_row':
-                        point_types = ['first_col', 'second_col', 'last_col']
-                    else:
-                        # Build point types from dynamically generated instructions
-                        point_types = [pt for _, pt in self._precision_instructions]
-                    self._current_point_type = point_types[self._precision_step]
-                    print(f'Waiting for next click: {self._current_point_type}')
-    
-    def _calculate_precision_centers(self):
-        """Calculate all centers based on precision estimate reference points"""
-        try:
-            # Get palette dimensions for clamping coordinates to valid range
-            palette_w = self.palette_box[2] - self.palette_box[0]
-            palette_h = self.palette_box[3] - self.palette_box[1]
-            
-            points_dict = {p['type']: p['coords'] for p in self._precision_points}
-            
-            if self._precision_mode == 'single_column':
-                # Extract reference points
-                first_row_first_col = points_dict['first_row_first_col']
-                second_row_first_col = points_dict['second_row_first_col']
-                last_row_first_col = points_dict['last_row_first_col']
-                
-                # Find first and last row indices with valid positions
-                rows_with_valid = sorted(list({i // self.cols for i in self._valid_positions}))
-                first_valid_row = rows_with_valid[0]
-                last_valid_row = rows_with_valid[-1]
-                
-                # Calculate row spacing from first row to last row
-                total_row_distance = last_row_first_col[1] - first_row_first_col[1]
-                num_row_gaps = last_valid_row - first_valid_row
-                row_spacing = total_row_distance / num_row_gaps if num_row_gaps > 0 else 0
-                
-                # Validate row spacing using second row if available
-                if len(rows_with_valid) >= 2:
-                    second_row_distance = second_row_first_col[1] - first_row_first_col[1]
-                    expected_second_row_distance = row_spacing if first_valid_row + 1 == rows_with_valid[1] else row_spacing * (rows_with_valid[1] - first_valid_row)
-                    # Use average if close, otherwise use direct measurement
-                    if abs(second_row_distance - expected_second_row_distance) < 10:
-                        avg_row_spacing = (row_spacing + second_row_distance) / (1 + (rows_with_valid[1] - first_valid_row))
-                    else:
-                        avg_row_spacing = row_spacing
-                else:
-                    avg_row_spacing = row_spacing
-                
-                # X position is the same for all in single column
-                x_pos = first_row_first_col[0]
-                
-                # Calculate centers for all valid positions
-                for i in self._valid_positions:
-                    row_idx = i // self.cols
-                    center_x = x_pos
-                    center_y = first_row_first_col[1] + (row_idx - first_valid_row) * avg_row_spacing
-                    # Clamp coordinates to valid range to prevent index out of bounds
-                    center_x = max(0, min(center_x, palette_w - 1))
-                    center_y = max(0, min(center_y, palette_h - 1))
-                    self._manual_centers[i] = (center_x, center_y)
-                
-            elif self._precision_mode == '1_row':
-                # Calculate horizontal spacing
-                first_col = points_dict['first_col']
-                second_col = points_dict['second_col']
-                last_col = points_dict['last_col']
-                
-                # Get sorted valid column indices
-                cols_with_valid = sorted(list({i % self.cols for i in self._valid_positions}))
-                
-                # Calculate spacing between columns
-                col_spacing = second_col[0] - first_col[0]
-                col_spacing2 = (last_col[0] - first_col[0]) / (len(cols_with_valid) - 1)
-                
-                # Use average of the two measurements for better accuracy
-                avg_col_spacing = (col_spacing + col_spacing2) / 2
-                
-                # Y position is the same for all in single row
-                y_pos = first_col[1]
-                
-                # Calculate centers for all valid positions
-                for i in self._valid_positions:
-                    col = i % self.cols
-                    
-                    # Find position of this column in valid columns
-                    col_pos = cols_with_valid.index(col)
-                    
-                    center_x = first_col[0] + col_pos * avg_col_spacing
-                    center_y = y_pos
-                    # Clamp coordinates to valid range to prevent index out of bounds
-                    center_x = max(0, min(center_x, palette_w - 1))
-                    center_y = max(0, min(center_y, palette_h - 1))
-                    
-                    self._manual_centers[i] = (center_x, center_y)
-                
-            elif self._precision_mode == 'multi_row':
-                # Extract reference points
-                first_row_first_col = points_dict['first_row_first_col']
-                first_row_second_col = points_dict['first_row_second_col']
-                first_row_last_col = points_dict['first_row_last_col']
-                last_row_first_col = points_dict['last_row_first_col']
-                last_row_last_col = points_dict['last_row_last_col']
-                
-                # second_row_first_col may not be collected if there are only 2 rows
-                second_row_first_col = points_dict.get('second_row_first_col', last_row_first_col)
-                
-                # Get sorted valid column indices
-                cols_with_valid = sorted(list({i % self.cols for i in self._valid_positions}))
-                first_valid_col = cols_with_valid[0]
-                last_valid_col = cols_with_valid[-1]
-                
-                # Calculate horizontal spacing from first row
-                col_spacing1 = first_row_second_col[0] - first_row_first_col[0]
-                col_spacing2 = (first_row_last_col[0] - first_row_first_col[0]) / (len(cols_with_valid) - 1)
-                avg_col_spacing = (col_spacing1 + col_spacing2) / 2
-                
-                # Find first and last row indices with valid positions
-                rows_with_valid = sorted(list({i // self.cols for i in self._valid_positions}))
-                first_valid_row = rows_with_valid[0]
-                last_valid_row = rows_with_valid[-1]
-                
-                # Calculate row spacing from first row to last row
-                total_row_distance = last_row_first_col[1] - first_row_first_col[1]
-                num_row_gaps = last_valid_row - first_valid_row
-                row_spacing = total_row_distance / num_row_gaps if num_row_gaps > 0 else 0
-                
-                # Validate row spacing using second row if available
-                if len(rows_with_valid) >= 2:
-                    second_row_distance = second_row_first_col[1] - first_row_first_col[1]
-                    expected_second_row_distance = row_spacing if first_valid_row + 1 == rows_with_valid[1] else row_spacing * (rows_with_valid[1] - first_valid_row)
-                    # Use average if close, otherwise use the direct measurement
-                    if abs(second_row_distance - expected_second_row_distance) < 10:
-                        avg_row_spacing = (row_spacing + second_row_distance) / (1 + (rows_with_valid[1] - first_valid_row))
-                    else:
-                        avg_row_spacing = row_spacing
-                else:
-                    avg_row_spacing = row_spacing
-                
-                # Calculate centers for all valid positions
-                for i in self._valid_positions:
-                    row_idx = i // self.cols
-                    col = i % self.cols
-                    
-                    # Find position of this column in valid columns
-                    col_pos = cols_with_valid.index(col)
-                    
-                    # Calculate Y position based on row index
-                    center_y = first_row_first_col[1] + (row_idx - first_valid_row) * avg_row_spacing
-                    
-                    # Calculate X position based on column position in valid columns
-                    center_x = first_row_first_col[0] + col_pos * avg_col_spacing
-                    
-                    # DEBUG: Log first center calculation
-                    if i == min(self._valid_positions):
-                        print(f'[DEBUG] First valid position: {i}')
-                        print(f'[DEBUG] Row: {row_idx}, Col: {col}, Col pos: {col_pos}')
-                        print(f'[DEBUG] first_row_first_col: {first_row_first_col}')
-                        print(f'[DEBUG] avg_col_spacing: {avg_col_spacing}, avg_row_spacing: {avg_row_spacing}')
-                        print(f'[DEBUG] Calculated center for pos {i}: ({center_x}, {center_y})')
-                    
-                    self._manual_centers[i] = (center_x, center_y)
-            
-            # Update grid to show estimated centers
+    def _on_extraction_complete(self, manual_centers):
+        """Handle completion of interactive palette extraction"""
+        if manual_centers:
+            self._manual_centers = manual_centers
+            # Update grid to show extracted centers
             for i, lbl in self._grid_buttons.items():
                 if i in self._manual_centers:
                     lbl.config(bg='yellow', text=f'{i+1} ✓')
                 else:
                     lbl.config(bg='mistyrose', text=f'{i+1}')
-            
-            # Show overlay of estimated centers
+            # Show overlay of extracted centers
             self._show_centers_overlay()
-            
-            # Show success message
-            messagebox.showinfo(
-                'Precision Estimate Complete',
-                f'Precision estimate completed for {len(self._manual_centers)} colors!\n\n'
-                f'Reference points collected: {len(self._precision_points)}\n'
-                f'Mode: {self._precision_mode}\n\n'
-                f'Yellow cells show estimated centers.\n'
-                f'Click "Done" to accept or manually adjust centers.'
-            )
-            
             # Update instructions
             for widget in self._color_sel_window.winfo_children():
                 try:
                     if isinstance(widget, Label) and 'text' in str(widget.cget('text')):
-                        widget.config(text='Precision estimate complete (yellow = estimated). Click "Done" to accept or manually adjust by switching to Pick Centers mode.')
+                        widget.config(text='Extraction complete (yellow = extracted). Click "Done" to accept or manually adjust by switching to Pick Centers mode.')
                 except:
                     pass
-            
-            self._color_sel_window.deiconify()
-            
-        except Exception as e:
-            messagebox.showerror('Precision Estimate Error', f'Error calculating centers: {str(e)}')
-            self._cancel_precision_estimate()
-    
-    def _cancel_precision_estimate(self):
-        """Cancel precision estimate mode"""
-        self._precision_points = []
-        self._precision_step = 0
-        self._manual_centers = {}
-        # Check if window still exists before deiconifying
-        if hasattr(self, '_color_sel_window') and self._color_sel_window.winfo_exists():
-            self._color_sel_window.deiconify()
-        print('Precision estimate cancelled')
+        else:
+            # User cancelled extraction
+            print('Interactive palette extraction cancelled')
     
     def _show_centers_overlay(self):
         """Show overlay circles on screen at estimated center positions"""
         from tkinter import Toplevel, Canvas
-        import time
         
         # Create overlay window positioned exactly over palette
         palette_x = self.palette_box[0]
@@ -1032,7 +687,6 @@ class SetupWindow:
     def _show_custom_centers_overlay(self):
         """Show overlay circles on screen at manually picked center positions"""
         from tkinter import Toplevel, Canvas
-        import time
         
         if not self._manual_centers:
             messagebox.showwarning(self.title, 'No custom centers to show! Please pick centers first using "Pick Centers" mode.')
@@ -1191,8 +845,7 @@ class SetupWindow:
         
         # Close the selection window
         self._color_sel_window.destroy()
-            
-
+    
     def _on_click(self, x, y, _, pressed):
         if pressed:
             self._root.bell()
@@ -1248,7 +901,7 @@ class SetupWindow:
                 self.parent.wm_state('normal')
                 self._root.deiconify()
                 self._root.wm_state('normal')
-
+    
     def _validate_dimensions(self, value):
         return re.fullmatch(r'\d*', value) is not None
 
@@ -1319,3 +972,600 @@ class SetupWindow:
     def close(self):
         self._root.destroy()
         self.on_complete()
+
+
+class InteractivePaletteExtractor:
+    """Interactive palette extraction tool with anchor point placement and interpolation"""
+    
+    TEMP_FILE = 'palette_extraction_temp.json'
+    
+    def __init__(self, parent, bot, current_tool, tool_name, valid_positions, palette_box, on_complete):
+        self._root = Toplevel(parent)
+        self._parent = parent
+        self.bot = bot
+        self._current_tool = current_tool
+        self._tool_name = tool_name
+        self._valid_positions = valid_positions
+        self._palette_box = palette_box
+        self._on_complete = on_complete
+        
+        self._root.title('Interactive Palette Extraction')
+        self._root.geometry('1000x700+100+100')
+        
+        # State management
+        self._phase = 0  # 0: region, 1: grid, 2: anchors, 3: extract
+        self._region = None
+        self._rows = 0
+        self._cols = 0
+        self._anchors = {}  # {index: (x, y)} - anchor points (green)
+        self._interpolated = {}  # {index: (x, y)} - interpolated points (yellow)
+        self._palette_img = None
+        self._preview_tk = None
+        
+        # Mouse listener
+        self._listener = None
+        
+        # UI Layout
+        self._setup_ui()
+        
+        # Try to restore from temp file
+        self._try_restore()
+        
+        # Start with phase 1
+        self._start_phase_1()
+        
+        # Window close handler
+        self._root.protocol('WM_DELETE_WINDOW', self._on_close)
+    
+    def _setup_ui(self):
+        """Setup main UI layout"""
+        self._root.columnconfigure(0, weight=1)
+        self._root.rowconfigure(0, weight=1)  # Main content
+        self._root.rowconfigure(1, weight=0)  # Controls
+        
+        # Main content frame
+        self._content_frame = Frame(self._root)
+        self._content_frame.grid(column=0, row=0, sticky='nsew', padx=10, pady=10)
+        self._content_frame.columnconfigure(0, weight=1)
+        self._content_frame.rowconfigure(0, weight=1)
+        
+        # Control frame
+        self._control_frame = Frame(self._root)
+        self._control_frame.grid(column=0, row=1, sticky='ew', padx=10, pady=5)
+        self._control_frame.columnconfigure(0, weight=1)
+        
+        # Content canvas
+        self._canvas = Canvas(self._content_frame, bg='white')
+        self._canvas.grid(column=0, row=0, sticky='nsew')
+    
+    def _update_controls(self):
+        """Update control buttons based on current phase"""
+        # Clear existing controls
+        for widget in self._control_frame.winfo_children():
+            widget.destroy()
+        
+        if self._phase == 1:  # Region selection
+            status_label = Label(self._control_frame, 
+                text='Phase 1: Click upper-left and bottom-right corners of palette region')
+            status_label.grid(column=0, row=0, pady=5)
+        
+        elif self._phase == 2:  # Grid configuration
+            # Grid dimension inputs
+            Label(self._control_frame, text='Rows:').grid(column=0, row=0, sticky='w', padx=5)
+            self._rows_entry = Entry(self._control_frame, width=5)
+            self._rows_entry.grid(column=1, row=0, padx=5)
+            if self._rows > 0:
+                self._rows_entry.insert(0, str(self._rows))
+            
+            Label(self._control_frame, text='Cols:').grid(column=2, row=0, sticky='w', padx=5)
+            self._cols_entry = Entry(self._control_frame, width=5)
+            self._cols_entry.grid(column=3, row=0, padx=5)
+            if self._cols > 0:
+                self._cols_entry.insert(0, str(self._cols))
+            
+            Button(self._control_frame, text='Set Grid', 
+                command=self._on_set_grid).grid(column=4, row=0, padx=5)
+            
+            Button(self._control_frame, text='Back to Region', 
+                command=self._back_to_phase_1).grid(column=5, row=0, padx=5)
+        
+        elif self._phase == 3:  # Anchor placement
+            # Status and anchor count
+            required_anchors = self._get_required_anchors()
+            anchor_count = len(self._anchors)
+            status_text = f'Anchors: {anchor_count}/{required_anchors} required'
+            status_label = Label(self._control_frame, text=status_text)
+            status_label.grid(column=0, row=0, pady=5)
+            
+            Button(self._control_frame, text='Clear Anchors', 
+                command=self._clear_anchors).grid(column=1, row=0, padx=5)
+            
+            Button(self._control_frame, text='Back to Grid', 
+                command=self._back_to_phase_2).grid(column=2, row=0, padx=5)
+            
+            Button(self._control_frame, text='Extract Colors', 
+                command=self._on_extract_colors).grid(column=3, row=0, padx=5)
+        
+        elif self._phase == 4:  # Complete
+            Button(self._control_frame, text='Close', 
+                command=self._on_close).grid(column=0, row=0, pady=5)
+    
+    def _start_phase_1(self):
+        """Start phase 1: Region selection"""
+        self._phase = 1
+        self._update_controls()
+        
+        # Show instructions first
+        result = messagebox.askokcancel(
+            'Phase 1: Region Selection',
+            'Click on your palette to define the extraction region:\n\n'
+            '1. Click the UPPER-LEFT corner of your palette\n'
+            '2. Click the BOTTOM-RIGHT corner of your palette\n\n'
+            'The selected area will be captured and displayed.\n\n'
+            'Click OK to begin, then click the corners on your palette.'
+        )
+        
+        if not result:
+            return  # User cancelled
+        
+        # Clear canvas
+        self._canvas.delete('all')
+        
+        # Instructions on canvas
+        self._canvas.create_text(
+            400, 300,
+            text='Click UPPER-LEFT corner of palette,\nthen click BOTTOM-RIGHT corner.',
+            font=('Arial', 14, 'bold'),
+            fill='#333333'
+        )
+        
+        # Start mouse listener
+        self._coords = []
+        self._clicks = 0
+        self._required_clicks = 2
+        
+        self._listener = Listener(on_click=self._on_region_click)
+        self._listener.start()
+        
+        # Minimize windows for clicking
+        self._root.iconify()
+        self._parent.iconify()
+    
+    def _on_region_click(self, x, y, button, pressed):
+        """Handle click for region selection"""
+        if pressed:
+            self._root.bell()
+            print(x, y)
+            self._clicks += 1
+            self._coords += x, y
+            
+            if self._clicks == self._required_clicks:
+                # Determine corner coordinates
+                top_left = (min(self._coords[0], self._coords[2]), 
+                            min(self._coords[1], self._coords[3]))
+                bot_right = (max(self._coords[0], self._coords[2]), 
+                            max(self._coords[1], self._coords[3]))
+                self._region = (top_left[0], top_left[1], bot_right[0], bot_right[1])
+                
+                print(f'Captured region: {self._region}')
+                
+                # Capture palette image
+                self._capture_palette()
+                
+                # Stop listener and restore windows
+                self._listener.stop()
+                self._parent.deiconify()
+                self._parent.wm_state('normal')
+                self._root.deiconify()
+                self._root.wm_state('normal')
+                
+                # Save and move to phase 2
+                self._save_temp()
+                self._start_phase_2()
+    
+    def _capture_palette(self):
+        """Capture palette image from selected region"""
+        try:
+            palette_img = ImageGrab.grab(self._region)
+            self._palette_img = palette_img
+            
+            # Display on canvas
+            self._canvas.delete('all')
+            
+            # Calculate display size
+            canvas_w = self._canvas.winfo_width()
+            canvas_h = self._canvas.winfo_height()
+            
+            # Resize to fit canvas
+            img_w, img_h = palette_img.size
+            scale = min(canvas_w / img_w, canvas_h / img_h) * 0.9
+            display_w = int(img_w * scale)
+            display_h = int(img_h * scale)
+            
+            self._palette_display_img = ImageTk.PhotoImage(
+                palette_img.resize((display_w, display_h))
+            )
+            
+            # Center image on canvas
+            x_offset = (canvas_w - display_w) // 2
+            y_offset = (canvas_h - display_h) // 2
+            
+            self._canvas.create_image(x_offset, y_offset, 
+                image=self._palette_display_img, anchor='nw')
+            
+            # Store display parameters for later
+            self._display_scale = scale
+            self._display_offset = (x_offset, y_offset)
+            
+        except Exception as e:
+            messagebox.showerror('Capture Error', f'Failed to capture palette: {str(e)}')
+    
+    def _start_phase_2(self):
+        """Start phase 2: Grid configuration"""
+        self._phase = 2
+        self._update_controls()
+    
+    def _on_set_grid(self):
+        """Handle grid dimension input"""
+        try:
+            rows = int(self._rows_entry.get())
+            cols = int(self._cols_entry.get())
+            
+            if rows < 1 or cols < 1:
+                messagebox.showerror('Invalid Grid', 'Rows and columns must be at least 1')
+                return
+            
+            self._rows = rows
+            self._cols = cols
+            
+            # Save and move to phase 3
+            self._save_temp()
+            self._start_phase_3()
+            
+        except ValueError:
+            messagebox.showerror('Invalid Input', 'Please enter valid numbers for rows and columns')
+    
+    def _start_phase_3(self):
+        """Start phase 3: Anchor placement"""
+        self._phase = 3
+        self._anchors = {}
+        self._interpolated = {}
+        self._update_controls()
+        
+        # Redraw palette with grid overlay
+        self._draw_palette_with_grid()
+    
+    def _draw_palette_with_grid(self):
+        """Draw palette image with grid overlay"""
+        self._canvas.delete('all')
+        
+        # Redraw palette image
+        x_offset, y_offset = self._display_offset
+        self._canvas.create_image(x_offset, y_offset, 
+            image=self._palette_display_img, anchor='nw')
+        
+        # Draw grid lines
+        palette_w, palette_h = self._palette_img.size
+        display_w = int(palette_w * self._display_scale)
+        display_h = int(palette_h * self._display_scale)
+        
+        cell_w = display_w / self._cols
+        cell_h = display_h / self._rows
+        
+        # Vertical lines
+        for i in range(self._cols + 1):
+            x = x_offset + i * cell_w
+            self._canvas.create_line(x, y_offset, x, y_offset + display_h, 
+                fill='lightgray', dash=(2, 2))
+        
+        # Horizontal lines
+        for i in range(self._rows + 1):
+            y = y_offset + i * cell_h
+            self._canvas.create_line(x_offset, y, x_offset + display_w, y, 
+                fill='lightgray', dash=(2, 2))
+        
+        # Draw cell numbers
+        for i in range(self._rows * self._cols):
+            row = i // self._cols
+            col = i % self._cols
+            
+            cell_x = x_offset + col * cell_w + cell_w / 2
+            cell_y = y_offset + row * cell_h + cell_h / 2
+            
+            self._canvas.create_text(cell_x, cell_y, 
+                text=str(i + 1), font=('Arial', 10), fill='gray')
+        
+        # Draw anchor points
+        for idx, (rel_x, rel_y) in self._anchors.items():
+            display_x = x_offset + rel_x * self._display_scale
+            display_y = y_offset + rel_y * self._display_scale
+            self._canvas.create_oval(display_x - 6, display_y - 6, 
+                display_x + 6, display_y + 6, 
+                fill='green', outline='darkgreen', width=2)
+            self._canvas.create_text(display_x, display_y - 15, 
+                text=str(idx + 1), font=('Arial', 10, 'bold'), fill='green')
+        
+        # Draw interpolated points
+        for idx, (rel_x, rel_y) in self._interpolated.items():
+            if idx not in self._anchors:  # Don't draw anchors twice
+                display_x = x_offset + rel_x * self._display_scale
+                display_y = y_offset + rel_y * self._display_scale
+                self._canvas.create_oval(display_x - 4, display_y - 4, 
+                    display_x + 4, display_y + 4, 
+                    fill='yellow', outline='orange', width=1)
+        
+        # Bind click for anchor placement
+        self._canvas.bind('<Button-1>', self._on_canvas_click)
+    
+    def _on_canvas_click(self, event):
+        """Handle click on canvas for anchor placement"""
+        # Convert screen coordinates to palette-relative coordinates
+        x_offset, y_offset = self._display_offset
+        rel_x = (event.x - x_offset) / self._display_scale
+        rel_y = (event.y - y_offset) / self._display_scale
+        
+        # Determine which cell was clicked
+        palette_w, palette_h = self._palette_img.size
+        cell_w = palette_w / self._cols
+        cell_h = palette_h / self._rows
+        
+        col = int(rel_x / cell_w)
+        row = int(rel_y / cell_h)
+        
+        if col < 0 or col >= self._cols or row < 0 or row >= self._rows:
+            return  # Clicked outside grid
+        
+        clicked_idx = row * self._cols + col
+        
+        # Check if clicking on existing anchor to remove it
+        if clicked_idx in self._anchors:
+            del self._anchors[clicked_idx]
+            print(f'Removed anchor at position {clicked_idx + 1}')
+        else:
+            # Ask user which grid cell this anchor should represent
+            result = simpledialog.askstring(
+                'Specify Grid Cell',
+                f'You clicked at grid position {clicked_idx + 1}.\n\n'
+                f'Enter the grid cell number (1-{self._rows * self._cols})\n'
+                f'to place this anchor point at.\n\n'
+                f'Leave empty to cancel.'
+            )
+            
+            if not result:
+                return  # User cancelled
+            
+            try:
+                target_idx = int(result) - 1  # Convert to 0-based index
+                
+                if target_idx < 0 or target_idx >= self._rows * self._cols:
+                    messagebox.showerror(
+                        'Invalid Grid Cell',
+                        f'Grid cell must be between 1 and {self._rows * self._cols}'
+                    )
+                    return
+                
+                # Add anchor at the clicked position, linked to the target grid cell
+                self._anchors[target_idx] = (rel_x, rel_y)
+                print(f'Added anchor for position {target_idx + 1}: ({rel_x:.1f}, {rel_y:.1f})')
+                
+            except ValueError:
+                messagebox.showerror(
+                    'Invalid Input',
+                    'Please enter a valid number for the grid cell.'
+                )
+                return
+        
+        # Recalculate interpolation
+        self._recalculate_interpolation()
+        
+        # Redraw
+        self._draw_palette_with_grid()
+        
+        # Update status
+        self._update_controls()
+        
+        # Save
+        self._save_temp()
+    
+    def _get_required_anchors(self):
+        """Get minimum number of required anchors based on grid"""
+        if self._rows == 1 or self._cols == 1:
+            return 2  # 1D grid: first and last
+        else:
+            return 4  # 2D grid: 4 corners
+    
+    def _get_corner_indices(self):
+        """Get indices of corner positions based on grid"""
+        if self._rows == 1:
+            # Single row: first and last
+            return [0, self._cols - 1]
+        elif self._cols == 1:
+            # Single column: first and last
+            return [0, (self._rows - 1) * self._cols]
+        else:
+            # 2D grid: 4 corners
+            top_left = 0
+            top_right = self._cols - 1
+            bottom_left = (self._rows - 1) * self._cols
+            bottom_right = self._rows * self._cols - 1
+            return [top_left, top_right, bottom_left, bottom_right]
+    
+    def _recalculate_interpolation(self):
+        """Recalculate interpolated positions from anchors"""
+        self._interpolated = {}
+        
+        required_anchors = self._get_required_anchors()
+        if len(self._anchors) < required_anchors:
+            return  # Not enough anchors
+        
+        palette_w, palette_h = self._palette_img.size
+        cell_w = palette_w / self._cols
+        cell_h = palette_h / self._rows
+        
+        if self._rows == 1 or self._cols == 1:
+            # 1D interpolation
+            corners = self._get_corner_indices()
+            if corners[0] in self._anchors and corners[1] in self._anchors:
+                first_anchor = self._anchors[corners[0]]
+                last_anchor = self._anchors[corners[1]]
+                
+                if self._rows == 1:
+                    # Single row: interpolate horizontally
+                    for col in range(1, self._cols - 1):
+                        idx = col
+                        if idx not in self._anchors:
+                            t = col / (self._cols - 1)
+                            x = first_anchor[0] + t * (last_anchor[0] - first_anchor[0])
+                            y = first_anchor[1] + t * (last_anchor[1] - first_anchor[1])
+                            self._interpolated[idx] = (x, y)
+                else:
+                    # Single column: interpolate vertically
+                    for row in range(1, self._rows - 1):
+                        idx = row * self._cols
+                        if idx not in self._anchors:
+                            t = row / (self._rows - 1)
+                            x = first_anchor[0] + t * (last_anchor[0] - first_anchor[0])
+                            y = first_anchor[1] + t * (last_anchor[1] - first_anchor[1])
+                            self._interpolated[idx] = (x, y)
+        else:
+            # 2D bilinear interpolation
+            corners = self._get_corner_indices()
+            if all(c in self._anchors for c in corners):
+                tl = self._anchors[corners[0]]  # top-left
+                tr = self._anchors[corners[1]]  # top-right
+                bl = self._anchors[corners[2]]  # bottom-left
+                br = self._anchors[corners[3]]  # bottom-right
+                
+                for row in range(self._rows):
+                    for col in range(self._cols):
+                        idx = row * self._cols + col
+                        if idx not in self._anchors:
+                            # Bilinear interpolation
+                            t_row = row / (self._rows - 1) if self._rows > 1 else 0
+                            t_col = col / (self._cols - 1) if self._cols > 1 else 0
+                            
+                            # Interpolate top edge
+                            top_x = tl[0] + t_col * (tr[0] - tl[0])
+                            top_y = tl[1] + t_col * (tr[1] - tl[1])
+                            
+                            # Interpolate bottom edge
+                            bottom_x = bl[0] + t_col * (br[0] - bl[0])
+                            bottom_y = bl[1] + t_col * (br[1] - bl[1])
+                            
+                            # Interpolate between top and bottom
+                            x = top_x + t_row * (bottom_x - top_x)
+                            y = top_y + t_row * (bottom_y - top_y)
+                            
+                            self._interpolated[idx] = (x, y)
+    
+    def _clear_anchors(self):
+        """Clear all anchor points"""
+        if messagebox.askyesno('Clear Anchors', 
+                'Clear all anchor points? This cannot be undone.'):
+            self._anchors = {}
+            self._interpolated = {}
+            self._draw_palette_with_grid()
+            self._update_controls()
+            self._save_temp()
+    
+    def _back_to_phase_2(self):
+        """Go back to grid configuration"""
+        self._phase = 2
+        self._update_controls()
+        self._save_temp()
+    
+    def _back_to_phase_1(self):
+        """Go back to region selection"""
+        self._phase = 1
+        self._update_controls()
+        self._save_temp()
+        self._start_phase_1()
+    
+    def _on_extract_colors(self):
+        """Extract colors and complete"""
+        required_anchors = self._get_required_anchors()
+        if len(self._anchors) < required_anchors:
+            messagebox.showerror('Insufficient Anchors', 
+                f'Need at least {required_anchors} anchor points. '
+                f'Currently have {len(self._anchors)}.')
+            return
+        
+        # Combine anchors and interpolated points
+        self._manual_centers = {}
+        self._manual_centers.update(self._anchors)
+        self._manual_centers.update(self._interpolated)
+        
+        # Filter to valid positions only
+        filtered_centers = {}
+        for idx in self._valid_positions:
+            if idx in self._manual_centers:
+                filtered_centers[idx] = self._manual_centers[idx]
+        
+        print(f'Extracted {len(filtered_centers)} color centers')
+        
+        # Clean up temp file
+        try:
+            import os
+            if os.path.exists(self.TEMP_FILE):
+                os.remove(self.TEMP_FILE)
+                print(f'Cleaned up temp file: {self.TEMP_FILE}')
+        except Exception as e:
+            print(f'Failed to remove temp file: {e}')
+        
+        # Close window and return results
+        self._root.destroy()
+        self._on_complete(filtered_centers)
+    
+    def _save_temp(self):
+        """Save current state to temp file"""
+        try:
+            state = {
+                'phase': self._phase,
+                'region': self._region,
+                'rows': self._rows,
+                'cols': self._cols,
+                'anchors': self._anchors,
+                'interpolated': self._interpolated
+            }
+            
+            with open(self.TEMP_FILE, 'w') as f:
+                json.dump(state, f, indent=2)
+            
+            print(f'Saved state to {self.TEMP_FILE}')
+        except Exception as e:
+            print(f'Failed to save temp file: {e}')
+    
+    def _try_restore(self):
+        """Try to restore state from temp file"""
+        try:
+            if os.path.exists(self.TEMP_FILE):
+                if messagebox.askyesno('Restore Session', 
+                        'Found saved extraction session. Restore it?'):
+                    with open(self.TEMP_FILE, 'r') as f:
+                        state = json.load(f)
+                    
+                    self._phase = state.get('phase', 0)
+                    self._region = state.get('region')
+                    self._rows = state.get('rows', 0)
+                    self._cols = state.get('cols', 0)
+                    self._anchors = {int(k): tuple(v) for k, v in state.get('anchors', {}).items()}
+                    self._interpolated = {int(k): tuple(v) for k, v in state.get('interpolated', {}).items()}
+                    
+                    print(f'Restored state from phase {self._phase}')
+                    
+                    # Restore to appropriate phase
+                    if self._phase >= 2 and self._region:
+                        self._capture_palette()
+                    if self._phase >= 3:
+                        self._draw_palette_with_grid()
+                    self._update_controls()
+        except Exception as e:
+            print(f'Failed to restore: {e}')
+    
+    def _on_close(self):
+        """Handle window close"""
+        # Save state even when closing
+        self._save_temp()
+        self._root.destroy()
+        # Call on_complete with None to indicate cancellation
+        self._on_complete(None)

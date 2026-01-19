@@ -4,7 +4,7 @@ import json
 import os
 
 from PIL import (
-    Image, 
+    Image,
     ImageTk,
     ImageGrab
 )
@@ -324,7 +324,7 @@ class SetupWindow:
         self._mode_btn_pick = Button(mode_frame, text='Pick Centers', command=self._set_pick_centers_mode)
         self._mode_btn_pick.pack(side='left', padx=5)
         
-        # Scrollable frame for grid
+        # Scrollable frame for grid - using Canvas-based approach like precision estimate
         canvas = Canvas(self._color_sel_window)
         scrollbar = Scrollbar(self._color_sel_window, orient='vertical', command=canvas.yview)
         scrollable_frame = Frame(canvas)
@@ -340,46 +340,49 @@ class SetupWindow:
         canvas.grid(column=0, row=1, sticky='nsew', padx=10, pady=10)
         scrollbar.grid(column=1, row=1, sticky='ns', pady=10)
         
-        # Create grid cells
+        # Create grid cells using Canvas-based approach
         self._grid_buttons = {}
         # Note: self._valid_positions is already loaded above from config
         
         # Load palette preview image
         try:
             palette_img = Image.open(self._current_tool['preview'])
-            self._palette_img_tk = ImageTk.PhotoImage(palette_img)
+            self._palette_img_pil = palette_img  # Store PIL image for resizing
             
-            # Display palette image as reference
-            img_label = Label(scrollable_frame, image=self._palette_img_tk)
-            img_label.grid(column=0, row=0, columnspan=self.cols, padx=5, pady=5)
+            # Extract colors from palette image for each grid cell
+            self.palette_colors = []
+            cell_width = palette_img.width // self.cols
+            cell_height = palette_img.height // self.rows
             
-            current_row = 1
+            for row in range(self.rows):
+                for col in range(self.cols):
+                    # Calculate center pixel of each cell
+                    x = col * cell_width + cell_width // 2
+                    y = row * cell_height + cell_height // 2
+                    # Get pixel color (RGB tuple)
+                    color = palette_img.getpixel((x, y))
+                    self.palette_colors.append(color)
+            
+            current_row = 0  # No separate image label, so grid starts at row 0
         except:
             current_row = 0
-            self._palette_img_tk = None
+            self._palette_img_pil = None
         
-        # Create clickable grid cells
-        for i in range(self.rows * self.cols):
-            row = i // self.cols
-            col = i % self.cols
-            
-            # Use tkLabel (tkinter.Label) for better color control (can change background)
-            lbl = tkLabel(
-                scrollable_frame,
-                text=f'{i+1}',
-                width=8,
-                relief='raised',
-                borderwidth=2,
-                cursor='hand2'
-            )
-            lbl.bind('<Button-1>', lambda e, idx=i: self._toggle_grid_cell(idx))
-            # Set initial color based on valid/invalid state
-            if i in self._valid_positions:
-                lbl.config(bg='lightgreen')
-            else:
-                lbl.config(bg='mistyrose')
-            lbl.grid(column=col, row=current_row + row, padx=2, pady=2)
-            self._grid_buttons[i] = lbl
+        # Create Canvas-based grid with enable/disable indicators ON TOP of cells
+        # Calculate cell size based on palette dimensions (similar to precision estimate)
+        cell_size = 50  # Base cell size in pixels
+        
+        # Create a canvas for the grid (no background color - will show palette image)
+        grid_canvas = Canvas(scrollable_frame, highlightthickness=0)
+        grid_canvas.grid(column=0, row=current_row, columnspan=self.cols, padx=5, pady=5)
+        
+        # Store canvas reference for later updates
+        self._grid_canvas = grid_canvas
+        self._cell_size = cell_size
+        self._grid_start_row = current_row
+        
+        # Draw the grid with enable/disable indicators
+        self._draw_grid_with_indicators()
         
         # Done button
         done_frame = Frame(self._color_sel_window)
@@ -430,26 +433,161 @@ class SetupWindow:
         # Bind ESC key to cancel picking on the parent window (works even when color window is minimized)
         self.parent.bind('<Escape>', lambda e: self._on_escape_press(e))
     
+    def _draw_grid_with_indicators(self):
+        """Draw the grid with enable/disable indicators ON TOP of each cell (similar to precision estimate)"""
+        if not hasattr(self, '_grid_canvas'):
+            return
+        
+        # DEBUG: Log palette_colors existence and content
+        print(f"[DEBUG] hasattr(self, 'palette_colors'): {hasattr(self, 'palette_colors')}")
+        if hasattr(self, 'palette_colors'):
+            print(f"[DEBUG] len(self.palette_colors): {len(self.palette_colors)}")
+            print(f"[DEBUG] First 3 colors: {self.palette_colors[:3] if len(self.palette_colors) >= 3 else self.palette_colors}")
+        
+        # Clear the canvas
+        self._grid_canvas.delete('all')
+        
+        # Calculate canvas dimensions based on grid size
+        canvas_width = self.cols * self._cell_size
+        canvas_height = self.rows * self._cell_size
+        self._grid_canvas.config(width=canvas_width, height=canvas_height)
+        
+        # Draw palette image as background
+        if hasattr(self, '_palette_img_pil') and self._palette_img_pil is not None:
+            # Resize palette image to match canvas dimensions
+            resized_img = self._palette_img_pil.resize((canvas_width, canvas_height), 1)
+            # Create PhotoImage and store as instance variable to prevent garbage collection
+            self._palette_canvas_bg = ImageTk.PhotoImage(resized_img)
+            # Draw image at top-left corner of canvas
+            self._grid_canvas.create_image(0, 0, anchor='nw', image=self._palette_canvas_bg)
+        
+        # Draw grid cells with enable/disable indicators
+        for i in range(self.rows * self.cols):
+            row = i // self.cols
+            col = i % self.cols
+            
+            x1 = col * self._cell_size
+            y1 = row * self._cell_size
+            x2 = x1 + self._cell_size
+            y2 = y1 + self._cell_size
+            
+            # Calculate cell center for indicator dot
+            cell_center_x = x1 + self._cell_size / 2
+            cell_center_y = y1 + self._cell_size / 2
+            
+            # Draw enable/disable indicator (transparent grid - no background)
+            if i in self._valid_positions:
+                # Green indicator for enabled cells (similar to anchor points in precision estimate)
+                indicator_size = 8
+                self._grid_canvas.create_oval(
+                    cell_center_x - indicator_size, cell_center_y - indicator_size,
+                    cell_center_x + indicator_size, cell_center_y + indicator_size,
+                    fill='green', outline='darkgreen', width=2
+                )
+            else:
+                # Red indicator for disabled cells
+                indicator_size = 8
+                self._grid_canvas.create_oval(
+                    cell_center_x - indicator_size, cell_center_y - indicator_size,
+                    cell_center_x + indicator_size, cell_center_y + indicator_size,
+                    fill='red', outline='darkred', width=2
+                )
+        
+        # Bind click event to canvas
+        self._grid_canvas.bind('<Button-1>', self._on_grid_canvas_click)
+    
+    def _draw_grid_for_pick_centers(self):
+        """Draw the grid for pick centers mode (shows valid cells with center status)"""
+        if not hasattr(self, '_grid_canvas'):
+            return
+        
+        # Clear the canvas
+        self._grid_canvas.delete('all')
+        
+        # Calculate canvas dimensions based on grid size
+        canvas_width = self.cols * self._cell_size
+        canvas_height = self.rows * self._cell_size
+        self._grid_canvas.config(width=canvas_width, height=canvas_height)
+        
+        # Draw grid cells with center picking indicators
+        for i in range(self.rows * self.cols):
+            row = i // self.cols
+            col = i % self.cols
+            
+            x1 = col * self._cell_size
+            y1 = row * self._cell_size
+            x2 = x1 + self._cell_size
+            y2 = y1 + self._cell_size
+            
+            # Draw cell background
+            if i in self._manual_centers:
+                # Yellow for cells that have a center
+                self._grid_canvas.create_rectangle(x1, y1, x2, y2, fill='yellow', outline='lightgray')
+            elif i in self._valid_positions:
+                # White for valid cells without center yet
+                self._grid_canvas.create_rectangle(x1, y1, x2, y2, fill='white', outline='lightgray')
+            else:
+                # Gray for invalid cells
+                self._grid_canvas.create_rectangle(x1, y1, x2, y2, fill='lightgray', outline='gray')
+            
+            # Draw cell number centered
+            cell_center_x = x1 + self._cell_size / 2
+            cell_center_y = y1 + self._cell_size / 2
+            
+            if i in self._manual_centers:
+                # Show checkmark for cells with center
+                self._grid_canvas.create_text(cell_center_x, cell_center_y,
+                    text='✓', font=('Arial', 14, 'bold'), fill='black')
+            else:
+                # Show cell number
+                self._grid_canvas.create_text(cell_center_x, cell_center_y,
+                    text=str(i + 1), font=('Arial', 10), fill='gray')
+        
+        # Bind click event to canvas for center picking
+        self._grid_canvas.bind('<Button-1>', self._on_grid_canvas_click_pick_centers)
+    
+    def _on_grid_canvas_click_pick_centers(self, event):
+        """Handle click on grid canvas for picking centers"""
+        # Calculate which cell was clicked
+        col = event.x // self._cell_size
+        row = event.y // self._cell_size
+        
+        if col < 0 or col >= self.cols or row < 0 or row >= self.rows:
+            return  # Clicked outside grid
+        
+        index = row * self.cols + col
+        self._pick_center(index)
+    
+    def _on_grid_canvas_click(self, event):
+        """Handle click on grid canvas to toggle enable/disable"""
+        # Calculate which cell was clicked
+        col = event.x // self._cell_size
+        row = event.y // self._cell_size
+        
+        if col < 0 or col >= self.cols or row < 0 or row >= self.rows:
+            return  # Clicked outside grid
+        
+        index = row * self.cols + col
+        self._toggle_grid_cell(index)
+    
     def _toggle_grid_cell(self, index):
         """Toggle a grid cell between valid and invalid"""
         if index in self._valid_positions:
             self._valid_positions.remove(index)
-            self._grid_buttons[index].config(bg='mistyrose')
         else:
             self._valid_positions.add(index)
-            self._grid_buttons[index].config(bg='lightgreen')
+        # Redraw the grid with updated indicators
+        self._draw_grid_with_indicators()
     
     def _select_all_colors(self):
         """Select all grid cells as valid"""
         self._valid_positions = set(range(self.rows * self.cols))
-        for i, btn in self._grid_buttons.items():
-            btn.config(bg='lightgreen')
+        self._draw_grid_with_indicators()
     
     def _deselect_all_colors(self):
         """Deselect all grid cells"""
         self._valid_positions = set()
-        for i, btn in self._grid_buttons.items():
-            btn.config(bg='mistyrose')
+        self._draw_grid_with_indicators()
     
     def _set_toggle_mode(self):
         """Set mode to toggle valid/invalid cells"""
@@ -462,15 +600,8 @@ class SetupWindow:
                     widget.config(text='Click on grid cells to toggle them. Green = Valid, Red = Invalid. Click "Done" when finished.')
             except:
                 pass
-        # Update grid to show valid/invalid toggle AND rebind click handler
-        for i, lbl in self._grid_buttons.items():
-            if i in self._valid_positions:
-                lbl.config(bg='lightgreen', cursor='hand2', text=f'{i+1}')
-            else:
-                lbl.config(bg='mistyrose', cursor='hand2', text=f'{i+1}')
-            # Rebind click handler to toggle mode function
-            lbl.unbind('<Button-1>')
-            lbl.bind('<Button-1>', lambda e, idx=i: self._toggle_grid_cell(idx))
+        # Redraw grid with enable/disable indicators
+        self._draw_grid_with_indicators()
     
     def _set_pick_centers_mode(self):
         """Set mode to pick exact center points for each color"""
@@ -493,13 +624,7 @@ class SetupWindow:
                 pass
         
         # Update grid to show center picking status
-        for i, lbl in self._grid_buttons.items():
-            if i in self._manual_centers:
-                lbl.config(bg='yellow', text='✓')
-            else:
-                lbl.config(bg='white', text=f'{i+1}')
-            lbl.unbind('<Button-1>')
-            lbl.bind('<Button-1>', lambda e, idx=i: self._pick_center(idx))
+        self._draw_grid_for_pick_centers()
     
     def _pick_center(self, index):
         """Pick a center point for a specific color cell"""
@@ -566,10 +691,9 @@ class SetupWindow:
             center_y = row * cell_h + cell_h // 2
             
             self._manual_centers[i] = (center_x, center_y)
-            
-            # Update the grid cell to show it has a center (show both number and checkmark)
-            if i in self._grid_buttons:
-                self._grid_buttons[i].config(bg='yellow', text=f'{i+1} ✓')
+        
+        # Redraw grid with estimated centers
+        self._draw_grid_for_pick_centers()
         
         # Show visual overlay of estimated centers on screen
         self._show_centers_overlay()
@@ -602,12 +726,8 @@ class SetupWindow:
         """Handle completion of interactive palette extraction"""
         if manual_centers:
             self._manual_centers = manual_centers
-            # Update grid to show extracted centers
-            for i, lbl in self._grid_buttons.items():
-                if i in self._manual_centers:
-                    lbl.config(bg='yellow', text=f'{i+1} ✓')
-                else:
-                    lbl.config(bg='mistyrose', text=f'{i+1}')
+            # Redraw grid with extracted centers
+            self._draw_grid_for_pick_centers()
             # Show overlay of extracted centers
             self._show_centers_overlay()
             # Update instructions
@@ -769,9 +889,8 @@ class SetupWindow:
                 center_y = self._coords[1] - self.palette_box[1]
                 self._manual_centers[self._current_picking_index] = (center_x, center_y)
                 
-                # Update the grid cell to show it has a center
-                if self._current_picking_index in self._grid_buttons:
-                    self._grid_buttons[self._current_picking_index].config(bg='yellow', text='✓')
+                # Redraw the grid to show it has a center
+                self._draw_grid_for_pick_centers()
                 
                 print(f'Picked center for color {self._current_picking_index + 1}: ({center_x}, {center_y})')
                 

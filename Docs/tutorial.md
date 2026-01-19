@@ -97,7 +97,7 @@ You need to configure the following tools:
 7. **Color Button Okay** - Button to confirm color selection (optional)
 8. **MSPaint Mode** - Double-click on palette instead of single click (optional)
     - **MSPaint Mode checkbox**: Enable/disable double-click behavior
-    - **MSPaint Mode delay**: Delay between double-clicks in seconds (default: 0.5)
+    - **MSPaint Mode delay**: Delay between double-clicks in seconds (range 0.01-5.0, default 0.5)
 
 9. **Calibration Step** - Pixel step for color calibration scanning (1-10)
     - **Calibration Step Size entry**: Set pixel step size for calibration (default: 2)
@@ -161,15 +161,18 @@ If your application requires confirming color selection:
 
 1. Click **"Initialize"** next to Color Button Okay
 2. Click on the **Okay/Confirm button** location
-3. Optionally, select modifier keys (CTRL, ALT, SHIFT) if needed
+3. Set **Delay** (0.01-5.0 seconds) - time to wait after clicking the okay button
+4. Optionally, select modifier keys (CTRL, ALT, SHIFT) if needed
 
 ### Configuring MSPaint Mode (Optional)
 
 For applications like MS Paint that require double-clicking colors:
 
-1. Click **"Initialize"** next to MSPaint Mode
-2. Use to **"Enable double-click"** checkbox to enable the feature
-3. Set to **MSPaint Delay (seconds)** - time between double-clicks (default: 0.5s)
+1. Use to **"Enable double-click"** checkbox to enable the feature
+2. Set to **MSPaint Delay (s)** - time between double-clicks in seconds
+   - Range: 0.01 - 5.0 seconds
+   - Default: 0.5
+   - UI Control: Text entry field (not a slider)
 
 **Behavior:**
 - When enabled, double-clicks on palette colors instead of single click

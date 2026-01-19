@@ -169,6 +169,25 @@ Estimates drawing time from pre-processed data.
 
 **Returns:** Estimated time in seconds (float)
 
+#### Calibration Methods
+
+##### `run_color_calibration()`
+
+Runs color calibration by scanning the custom color spectrum.
+
+**Parameters:** None
+
+**Returns:** None
+
+**Behavior:**
+- Presses mouse down at spectrum start
+- Drags through entire spectrum step by step
+- Captures RGB values at each step from preview spot
+- Creates RGB to coordinate mapping
+- Releases mouse up
+- Can be cancelled with ESC key
+- Saves calibration data to `color_calibration.json`
+
 ---
 
 ## Utility Functions
@@ -188,40 +207,85 @@ Recalculates image dimensions to fit within available space.
 - Returns dimensions that fit within available space
 - May result in dead space if aspect ratios don't match
 
+### InteractivePaletteExtractor Class
+
+A class for precise palette center estimation using anchor points and interpolation.
+
+**Location:** `ui/setup.py`
+
+#### Constructor
+
+```python
+InteractivePaletteExtractor(rows, cols)
+```
+
+**Parameters:**
+- `rows` (int): Number of rows in palette
+- `cols` (int): Number of columns in palette
+
+#### Key Methods
+
+##### `set_layout_mode(mode)`
+
+Sets the layout mode for palette type.
+
+**Parameters:**
+- `mode` (str): 'single_column', '1_row', or 'multi_row'
+
+##### `add_anchor_point(row, col, x, y)`
+
+Adds an anchor point for interpolation.
+
+**Parameters:**
+- `row` (int): Row index
+- `col` (int): Column index
+- `x` (int): Screen x coordinate
+- `y` (int): Screen y coordinate
+
+##### `calculate_centers()`
+
+Calculates center points for all palette cells using interpolation.
+
+**Returns:** Dictionary mapping (row, col) to (x, y) coordinates
+
+**Behavior:**
+- Uses anchor points to interpolate positions
+- Handles irregular palette layouts
+- Provides precise center estimation for all cells
+
 ---
 
 ## Exception Classes
 
-### `PyaintException`
+### `NoToolError`
 
-Base exception class for all Pyaint errors.
-
-### `NotInitializedError`
-
-Raised when a required tool is not initialized.
+Base exception class for uninitialized tools. Raised when a required tool is not initialized or configured.
 
 **Example:**
 ```python
-raise NotInitializedError("Palette not initialized")
+raise NoToolError("Palette not initialized")
 ```
 
-### `ConfigurationError`
+### `CorruptConfigError`
 
-Raised when configuration is invalid or missing.
+Raised when configuration file is corrupted or invalid.
 
 **Example:**
 ```python
-raise ConfigurationError("Config file missing or invalid")
+raise CorruptConfigError("Config file missing or invalid")
 ```
 
-### `DrawingError`
+### `NoPaletteError`
 
-Raised when a drawing operation fails.
+Subclass of `NoToolError`. Raised specifically when palette is not initialized.
 
-**Example:**
-```python
-raise DrawingError("Failed to draw: Canvas not initialized")
-```
+### `NoCanvasError`
+
+Subclass of `NoToolError`. Raised specifically when canvas is not initialized.
+
+### `NoCustomColorsError`
+
+Subclass of `NoToolError`. Raised when custom colors are required but not initialized.
 
 ---
 

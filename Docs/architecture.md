@@ -118,10 +118,11 @@ pyaint/
 - Provide specific error types
 
 **Exception Classes**:
-- `PyaintException`: Base exception
-- `NotInitializedError`: Tool not initialized
-- `ConfigurationError`: Configuration issues
-- `DrawingError`: Drawing operation failures
+- `NoToolError`: Base exception for uninitialized tools
+- `CorruptConfigError`: Configuration file issues
+- `NoPaletteError`: Palette not initialized (subclass of NoToolError)
+- `NoCanvasError`: Canvas not initialized (subclass of NoToolError)
+- `NoCustomColorsError`: Custom colors not initialized (subclass of NoToolError)
 
 #### `ui/window.py`
 
@@ -497,6 +498,16 @@ Each tool has a configuration structure:
 - Enable Color Button
 - Enable Color Button Okay
 
+**Drawing Settings** (entries):
+- Delay (0.01-10.0s)
+- Pixel Size (3-50)
+- Precision (0.0-1.0)
+- Jump Delay (0.0-2.0s)
+- Calibration Step (1-10)
+- Jump Threshold (1-100)
+- Color Button delay (0.01-5.0s)
+- Color Button Okay delay (0.01-5.0s)
+
 **Drawing Mode**:
 - Slotted Mode (radio)
 - Layered Mode (radio)
@@ -580,12 +591,10 @@ def draw_loop():
 ```python
 try:
     operation()
-except NotInitializedError as e:
+except NoToolError as e:
     show_error("Tool not initialized")
-except ConfigurationError as e:
+except CorruptConfigError as e:
     show_error("Configuration error")
-except DrawingError as e:
-    show_error("Drawing failed")
 except Exception as e:
     show_error(f"Unexpected error: {e}")
 ```

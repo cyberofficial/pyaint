@@ -174,14 +174,21 @@ class SetupWindow:
             elif k == 'Color Button Okay':
                 settings_frame.rowconfigure(1, weight=1, uniform='row')
 
-                from tkinter import Checkbutton, IntVar
-                self._enable_vars = getattr(self, '_enable_vars', {})
-                ev = IntVar()
-                ev.set(1 if v.get('enabled', False) else 0)
-                cb = Checkbutton(settings_frame, text='Enable', variable=ev,
-                             command=lambda n=k, ev=ev: self._on_enable_toggle(n, ev))
-                cb.grid(column=0, row=1, columnspan=4, padx=5, pady=5, sticky='w')
-                self._enable_vars[k] = ev
+                Label(settings_frame, text='Delay (s)').grid(column=0, row=1, padx=5, pady=5)
+                self._edelay_okay = Entry(settings_frame, width=8)
+                self._edelay_okay.grid(column=1, row=1, padx=5, pady=5)
+
+                delay_value = v.get('delay', 0.1)
+                self._edelay_okay.insert(0, str(delay_value))
+                delay_vcmd = (self._root.register(self._validate_delay), '%P')
+                delay_ivcmd = (self._root.register(self._on_invalid_delay),)
+                self._edelay_okay.config(
+                    validate='all',
+                    validatecommand=delay_vcmd,
+                    invalidcommand=delay_ivcmd
+                )
+                self._edelay_okay.bind('<FocusOut>', lambda e, k=k: self._on_update_delay_okay(e, k))
+                self._edelay_okay.bind('<Return>', lambda e, k=k: self._on_update_delay_okay(e, k))
 
             settings_frame.grid(column=2, row=idt, sticky='nsew')
         return frame
@@ -1047,14 +1054,16 @@ class SetupWindow:
         self._root.bell()
 
     def _on_update_delay(self, event):
-        """Update delay value and validate on focus out or return"""
+        """Update delay value for Color Button and validate on focus out or return"""
         try:
             value = event.widget.get()
+            tool_name = 'Color Button'
             if value == '':
                 # Default to 0.1 if empty
                 event.widget.delete(0, END)
                 event.widget.insert(0, '0.1')
                 clamped = 0.1
+                print(f'{tool_name} delay updated to default: {clamped}s')
             else:
                 num = float(value)
                 # Clamp to valid range
@@ -1062,13 +1071,18 @@ class SetupWindow:
                 if clamped != num:
                     event.widget.delete(0, END)
                     event.widget.insert(0, str(clamped))
+                    print(f'{tool_name} delay clamped from {num}s to {clamped}s')
+                else:
+                    print(f'{tool_name} delay updated to {clamped}s')
             # Update tools dict with delay value
-            self.tools['Color Button']['delay'] = clamped
+            self.tools[tool_name]['delay'] = clamped
         except ValueError:
             # If invalid, reset to default
+            tool_name = 'Color Button'
             event.widget.delete(0, END)
             event.widget.insert(0, '0.1')
-            self.tools['Color Button']['delay'] = 0.1
+            self.tools[tool_name]['delay'] = 0.1
+            print(f'Invalid {tool_name} delay input, reset to default: 0.1s')
 
     def _on_enable_toggle(self, tool_name, intvar):
         # Update stored tools dict enabled state for given tool
@@ -1078,8 +1092,37 @@ class SetupWindow:
         except Exception:
             pass
 
+    def _on_update_delay_okay(self, event, tool_name):
+        """Update delay value for Color Button Okay and validate on focus out or return"""
+        try:
+            value = event.widget.get()
+            if value == '':
+                # Default to 0.1 if empty
+                event.widget.delete(0, END)
+                event.widget.insert(0, '0.1')
+                clamped = 0.1
+                print(f'{tool_name} delay updated to default: {clamped}s')
+            else:
+                num = float(value)
+                # Clamp to valid range
+                clamped = max(0.01, min(5.0, num))
+                if clamped != num:
+                    event.widget.delete(0, END)
+                    event.widget.insert(0, str(clamped))
+                    print(f'{tool_name} delay clamped from {num}s to {clamped}s')
+                else:
+                    print(f'{tool_name} delay updated to {clamped}s')
+            # Update tools dict with delay value
+            self.tools[tool_name]['delay'] = clamped
+        except ValueError:
+            # If invalid, reset to default
+            event.widget.delete(0, END)
+            event.widget.insert(0, '0.1')
+            self.tools[tool_name]['delay'] = 0.1
+            print(f'Invalid {tool_name} delay input, reset to default: 0.1s')
+
     def _on_modifier_toggle(self, tool_name, modifier_name, intvar):
-        # Update the stored tools dict modifiers for the given tool
+        # Update the stored tools dict modifiers for given tool
         try:
             if tool_name in self.tools:
                 if 'modifiers' not in self.tools[tool_name] or not isinstance(self.tools[tool_name]['modifiers'], dict):

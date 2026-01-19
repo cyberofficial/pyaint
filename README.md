@@ -68,7 +68,7 @@ python main.py
 
 | Setting | Range | Description |
 |---------|-------|-------------|
-| **Delay** | 0.0-1.0s | Time between strokes |
+| **Delay** | 0.01-10.0s | Time between strokes |
 | **Pixel Size** | 3-50px | Detail level (lower = more detail) |
 | **Precision** | 0.0-1.0 | Color accuracy |
 | **Jump Delay** | 0.0-2.0s | Cursor movement optimization |

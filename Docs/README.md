@@ -89,6 +89,7 @@ The Bot module contains the core drawing engine.
 - `precompute_image()` - Pre-process and cache image
 - `pick_palette_color()` - Select palette color
 - `pick_custom_color()` - Select custom color
+- `run_color_calibration()` - Run interactive palette extraction for precise color centers
 - `calibrate_custom_colors()` - Scan and save custom color calibration
 
 ### UI Module
@@ -438,10 +439,11 @@ cache/{image_hash}_{settings_hash}.json
 
 Custom exceptions in `exceptions.py`:
 
-- `PyaintException` - Base exception
-- `NotInitializedError` - Tool not initialized
-- `ConfigurationError` - Configuration issues
-- `DrawingError` - Drawing operation failures
+- `NoToolError` - Base exception for uninitialized tools
+- `CorruptConfigError` - Configuration file issues
+- `NoPaletteError` - Palette not initialized (subclass of NoToolError)
+- `NoCanvasError` - Canvas not initialized (subclass of NoToolError)
+- `NoCustomColorsError` - Custom colors not initialized (subclass of NoToolError)
 
 ### Thread Safety
 

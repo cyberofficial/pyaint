@@ -76,13 +76,13 @@ When you first launch Pyaint, you'll see a main window with three panels:
 2. **Preview Panel** (right): Image loading and preview
 3. **Tooltip Panel** (bottom): Status messages and progress updates
 
-The application will prompt you to begin by clicking **"Setup"** to configure your drawing environment.
+Begin by clicking **Setup** to configure your drawing environment.
 
 ---
 
 ## Initial Setup
 
-The Setup process configures tools Pyaint needs to interact with your drawing application. Click **"Setup"** button to open Setup window.
+The Setup process configures tools Pyaint needs to interact with your drawing application. Click **Setup** button to open Setup window.
 
 ### Tools to Configure
 
@@ -109,17 +109,17 @@ You need to configure the following tools:
 The Palette is essential - it tells Pyaint where your colors are located.
 
 1. Set **Rows** and **Columns** for your palette grid
-2. Click **"Initialize"**
+2. Click **Initialize**
 3. You'll be prompted to click on the **UPPER LEFT** and **LOWER RIGHT** corners of your palette
 4. The system will capture and scan colors
 
-After initialization, you can click **"Preview"** to see the captured palette.
+After initialization, you can click **Preview** to see the captured palette.
 
 ### Configuring Canvas
 
 The Canvas defines where Pyaint will draw your image.
 
-1. Click **"Initialize"** next to Canvas
+1. Click **Initialize** next to Canvas
 2. Click on the **UPPER LEFT** and **LOWER RIGHT** corners of your drawing area
 3. The canvas will be captured and saved
 
@@ -127,7 +127,7 @@ The Canvas defines where Pyaint will draw your image.
 
 Custom Colors allow for unlimited color options through a spectrum.
 
-1. Click **"Initialize"** next to Custom Colors
+1. Click **Initialize** next to Custom Colors
 2. Click on the **UPPER LEFT** and **LOWER RIGHT** corners of your custom color spectrum
 3. The system will scan the spectrum and create a color-to-position map
 
@@ -135,14 +135,14 @@ Custom Colors allow for unlimited color options through a spectrum.
 
 Required for color calibration to capture RGB values.
 
-1. Click **"Initialize"** next to Color Preview Spot
+1. Click **Initialize** next to Color Preview Spot
 2. Click on the **exact spot** where your selected color appears when using the custom colors spectrum
 
 ### Configuring New Layer (Optional)
 
 If your drawing application supports layers, you can configure Pyaint to automatically create new layers.
 
-1. Click **"Initialize"** next to New Layer
+1. Click **Initialize** next to New Layer
 2. Click on the **New Layer button** location in your application
 3. Optionally, select modifier keys (CTRL, ALT, SHIFT) if needed
 
@@ -150,7 +150,7 @@ If your drawing application supports layers, you can configure Pyaint to automat
 
 Some applications require clicking a button to access the color picker.
 
-1. Click **"Initialize"** next to Color Button
+1. Click **Initialize** next to Color Button
 2. Click on the **Color Button** location
 3. Set to **Delay** (time to wait after click)
 4. Optionally, select modifier keys (CTRL, ALT, SHIFT) if needed
@@ -159,7 +159,7 @@ Some applications require clicking a button to access the color picker.
 
 If your application requires confirming color selection:
 
-1. Click **"Initialize"** next to Color Button Okay
+1. Click **Initialize** next to Color Button Okay
 2. Click on the **Okay/Confirm button** location
 3. Set **Delay** (0.01-5.0 seconds) - time to wait after clicking the okay button
 4. Optionally, select modifier keys (CTRL, ALT, SHIFT) if needed
@@ -168,7 +168,7 @@ If your application requires confirming color selection:
 
 For applications like MS Paint that require double-clicking colors:
 
-1. Use to **"Enable double-click"** checkbox to enable the feature
+1. Use the **Enable double-click** checkbox to enable the feature
 2. Set to **MSPaint Delay (s)** - time between double-clicks in seconds
    - Range: 0.01 - 5.0 seconds
    - Default: 0.5
@@ -192,21 +192,21 @@ For applications like MS Paint that require double-clicking colors:
 
 ## Advanced Palette Configuration
 
-After initializing the palette, you can access advanced features by clicking **"Manual Color Selection"**.
+After initializing the palette, you can access advanced features by clicking **Manual Color Selection**.
 
 ### Toggle Valid/Invalid Colors
 
 Some palette colors may be broken or unused. You can mark them as invalid:
 
-1. Click **"Manual Color Selection"** to open the color selection window
+1. Click **Manual Color Selection** to open the color selection window
 2. Click on grid cells to toggle between **Valid (green)** and **Invalid (red)**
-3. Click **"Done"** when finished
+3. Click **Done** when finished
 
 ### Pick Exact Center Points
 
 For maximum precision, you can manually pick the exact center point for each color:
 
-1. In the color selection window, click **"Set Pick Centers Mode"**
+1. In the color selection window, click **Set Pick Centers Mode**
 2. Click on a color cell in the grid
 3. Click on the exact center point of that color on your palette
 4. The system automatically moves to the next color
@@ -216,7 +216,7 @@ For maximum precision, you can manually pick the exact center point for each col
 
 For quick setup on regular palettes:
 
-1. Click **"Auto-Estimate"**
+1. Click **Auto-Estimate**
 2. The system calculates center points using grid-based estimation
 3. An overlay shows the estimated positions for 5 seconds
 4. Yellow cells indicate colors with estimated centers
@@ -225,7 +225,7 @@ For quick setup on regular palettes:
 
 For maximum accuracy on irregular or complex palettes:
 
-1. Click **"Start Precision Estimate"**
+1. Click **Start Precision Estimate**
 2. The system detects your palette layout and provides instructions
 3. **Single Column Mode** (vertical palettes): Click first row (1st), second row (1st), last row (1st)
 4. **1 Row Mode** (horizontal palettes): Click first box, second box, last box
@@ -236,15 +236,15 @@ For maximum accuracy on irregular or complex palettes:
 
 After precision estimation:
 - Yellow cells show estimated centers
-- Click **"Show Centers Overlay"** to verify
-- Click **"Done"** to accept
-- Click **"Pick Centers"** to manually adjust
+- Click **Show Custom Centers** to verify
+- Click **Done** to accept
+- Click **Pick Centers** to manually adjust
 
 ### Select All / Deselect All
 
 For batch operations:
-- Click **"Select All"** to mark all grid cells as valid
-- Click **"Deselect All"** to mark all grid cells as invalid
+- Click **Select All** to mark all grid cells as valid
+- Click **Deselect All** to mark all grid cells as invalid
 
 ---
 
@@ -272,7 +272,7 @@ Color calibration improves accuracy when using custom colors by creating a preci
 3. Set **Calibration Step Size** (1-10, default: 2):
    - Lower = more accurate but slower
    - Higher = faster but less accurate
-4. Click **"Run Calibration"** button
+4. Click **Run Calibration** button
 5. Wait for calibration to complete
 6. Calibration data saved to `color_calibration.json`
 
@@ -428,12 +428,12 @@ You can load images in two ways:
 #### From URL
 
 1. Enter an image URL in the text field
-2. Click **"Search"**
+2. Click **Search**
 3. The image will be downloaded and displayed in the preview
 
 #### From File
 
-1. Click **"Open File"**
+1. Click **Open File**
 2. Select an image from your computer
 3. The image will be displayed in the preview
 
@@ -441,7 +441,7 @@ You can load images in two ways:
 
 For images you'll draw multiple times, pre-computing saves time:
 
-1. Click **"Pre-compute"**
+1. Click **Pre-compute**
 2. The image is processed and cached
 3. Estimated drawing time is displayed
 4. Future draws will use the cached data
@@ -452,21 +452,21 @@ Before a full drawing, test to calibrate your brush size:
 
 #### Simple Test Draw
 
-1. Click **"Simple Test Draw"**
+1. Click **Simple Test Draw**
 2. 5 horizontal lines (1/4 canvas width each) will be drawn
 3. No color picking occurs - use your currently selected color
 4. Adjust brush size in your drawing app based on the result
 
 #### Test Draw
 
-1. Click **"Test Draw"**
+1. Click **Test Draw**
 2. The first 20 lines of the image will be drawn
 3. Includes color switching
 4. Adjust brush size based on the test result
 
 ### Step 4: Full Drawing
 
-1. Click **"Start"**
+1. Click **Start**
 2. A warning shows the controls (ESC to stop, pause key to pause/resume)
 3. Click "OK" to continue
 4. The window minimizes
@@ -488,14 +488,14 @@ Region-based redrawing allows you to fix mistakes or add details without a full 
 ### Select a Region
 
 1. Load your image
-2. Click **"Redraw Pick"** in the Redraw Region section
+2. Click **Pick Region** in the Redraw Region section
 3. Click on the **UPPER LEFT** corner of the area you want to redraw
 4. Click on the **LOWER RIGHT** corner of the area
 5. The selected region is displayed
 
 ### Draw Region
 
-1. After selecting a region, click **"Draw Region"**
+1. After selecting a region, click **Draw Region**
 2. Only the selected area will be drawn
 3. Useful for fixing mistakes or adding details
 
@@ -530,6 +530,14 @@ The File Management section in the Control Panel provides two buttons for managi
 - **Remove Calibration**: Deletes color calibration file
 - **Reset Config**: Deletes main configuration file
 
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `config.json` | Main configuration file with all settings and tool configurations |
+| `color_calibration.json` | Color calibration data for custom colors (RGB to position mapping) |
+| `palette_extraction_temp.json` | Temporary file for interactive palette extraction data |
+
 ### Remove Calibration
 
 **Purpose**: Clear color calibration data to force recalibration or remove outdated data.
@@ -542,13 +550,13 @@ The File Management section in the Control Panel provides two buttons for managi
 - Calibration was done on different display settings
 
 **Actions:**
-1. Click **"Remove Calibration"** button
+1. Click **Remove Calibration** button
 2. Confirm the deletion in dialog
 3. Color calibration map is cleared from memory
 4. Next drawing will require new calibration or revert to keyboard input
 
 **Restoration**: The calibration data will be rebuilt automatically when:
-- You run **"Run Calibration"** again, OR
+- You run **Run Calibration** again, OR
 - No calibration file exists and drawing uses custom colors (falls back to keyboard input)
 
 ### Reset Config
@@ -570,16 +578,16 @@ The File Management section in the Control Panel provides two buttons for managi
 - Settings are lost and need to be reconfigured
 
 **Actions:**
-1. Click **"Reset Config"** button
+1. Click **Reset Config** button
 2. Confirm the reset in warning dialog
 3. Configuration file is deleted
 4. Restart the application to load default settings
 
 **Restoration**: You will need to:
 1. Restart Pyaint (application will use built-in defaults)
-2. Run **"Setup"** to reconfigure tools
+2. Run **Setup** to reconfigure tools
 3. Adjust drawing settings as needed
-4. Run **"Run Calibration"** if using custom colors
+4. Run **Run Calibration** if using custom colors
 
 ### Confirmation Safety
 

@@ -37,14 +37,15 @@ Complete guide to configuring Pyaint's settings and tools.
     "delay": 0.1,
     "pixel_size": 12,
     "precision": 0.9,
-    "jump_delay": 0.5
+    "jump_delay": 0.5,
+    "jump_threshold": 5
   },
   "drawing_options": {
-    "ignore_white_pixels": false,
-    "use_custom_colors": false,
-    "skip_first_color": false
+    "ignore_white_pixels": true,
+    "use_custom_colors": false
   },
   "pause_key": "p",
+  "skip_first_color": false,
   "calibration_settings": {
     "step_size": 2
   },
@@ -79,7 +80,7 @@ Complete guide to configuring Pyaint's settings and tools.
     "modifiers": {
       "ctrl": false,
       "alt": false,
-      "shift": true
+      "shift": false
     }
   },
   "Color Button": {
@@ -97,7 +98,6 @@ Complete guide to configuring Pyaint's settings and tools.
     "status": true,
     "coords": [x, y],
     "enabled": false,
-    "delay": 0.1,
     "modifiers": {
       "ctrl": false,
       "alt": false,
@@ -188,7 +188,7 @@ Complete guide to configuring Pyaint's settings and tools.
 
 **Default:** 0.5
 
-**Description:** Adds delay when cursor jumps more than 5 pixels between strokes.
+**Description:** Adds delay when cursor jumps more than the jump threshold pixels between strokes.
 
 **UI Control:** Slider
 
@@ -199,6 +199,24 @@ Complete guide to configuring Pyaint's settings and tools.
 **Impact:**
 - Higher jump delay = fewer accidental strokes but slower
 - Lower jump delay = faster but risk of unintended strokes
+
+### Jump Threshold
+
+**Range:** 1 - 100 (integer pixels)
+
+**Default:** 5
+
+**Description:** Pixel distance threshold that triggers jump delay when cursor movement exceeds this value.
+
+**UI Control:** Text entry field
+
+**When to Adjust:**
+- **Increase** to reduce jump delays (only on very large jumps)
+- **Decrease** to add jump delays on smaller movements
+
+**Impact:**
+- Higher threshold = fewer jump delays but risk of unintended strokes
+- Lower threshold = more jump delays but prevents accidental strokes
 
 ---
 
@@ -211,12 +229,12 @@ Complete guide to configuring Pyaint's settings and tools.
 **Fields:**
 
 | Field | Type | Description |
-|--------|--------|-------------|
+|--------|------|-------------|
 | `status` | bool | True if initialized |
 | `box` | array | [x1, y1, x2, y2] screen coordinates |
 | `rows` | int | Number of rows in palette grid |
 | `cols` | int | Number of columns in palette grid |
-| `color_coords` | object | RGB → (x, y) mappings |
+| `color_coords` | object | RGB to (x, y) mappings |
 | `valid_positions` | array | Indices of valid palette cells |
 | `manual_centers` | object | Manual center point overrides |
 | `preview` | string | Path to preview screenshot |
@@ -224,8 +242,7 @@ Complete guide to configuring Pyaint's settings and tools.
 **Advanced Features:**
 - **Valid Positions**: Toggle which palette cells are available
 - **Manual Centers**: Set exact center points for each color
-- **Auto-Estimate**: Calculate grid-based center points
-- **Precision Estimate**: Advanced calculation using reference points
+- **Interactive Color Selection**: Open color selection UI for manual configuration
 
 ### Canvas
 
@@ -234,7 +251,7 @@ Complete guide to configuring Pyaint's settings and tools.
 **Fields:**
 
 | Field | Type | Description |
-|--------|--------|-------------|
+|--------|------|-------------|
 | `status` | bool | True if initialized |
 | `box` | array | [x1, y1, x2, y2] screen coordinates |
 | `preview` | string | Path to preview screenshot |
@@ -246,7 +263,7 @@ Complete guide to configuring Pyaint's settings and tools.
 **Fields:**
 
 | Field | Type | Description |
-|--------|--------|-------------|
+|--------|------|-------------|
 | `status` | bool | True if initialized |
 | `box` | array | [x1, y1, x2, y2] spectrum coordinates |
 | `preview` | string | Path to preview screenshot |
@@ -255,6 +272,22 @@ Complete guide to configuring Pyaint's settings and tools.
 - Scans spectrum to create color map
 - Used when "Use Custom Colors" is enabled
 - Falls back to keyboard input if not configured
+
+### Color Preview Spot
+
+**Status:** Optional (required for color calibration)
+
+**Fields:**
+
+| Field | Type | Description |
+|--------|------|-------------|
+| `name` | string | "Color Preview Spot" |
+| `status` | bool | True if initialized |
+| `coords` | array | [x, y] screen coordinates |
+| `enabled` | bool | Whether feature is active |
+| `modifiers` | object | CTRL/ALT/SHIFT key flags |
+
+**Purpose:** Specifies where to capture RGB values during color calibration
 
 ### MSPaint Mode
 
@@ -268,25 +301,9 @@ Complete guide to configuring Pyaint's settings and tools.
 | `delay` | float | 0.5 | Delay between double-clicks in seconds |
 
 **Behavior:**
-- If enabled: Double-clicks on palette colors instead of single click
+- If enabled: Double-clicks on palette/spectrum colors instead of single click
 - Waits configured delay between clicks
 - Useful for MS Paint and similar applications requiring double-click
-
-### Color Preview Spot
-
-**Status:** Optional (required for color calibration)
-
-**Fields:**
-
-| Field | Type | Description |
-|--------|--------|-------------|
-| `name` | string | "Color Preview Spot" |
-| `status` | bool | True if initialized |
-| `coords` | array | [x, y] screen coordinates |
-| `enabled` | bool | Whether feature is active |
-| `modifiers` | object | CTRL/ALT/SHIFT key flags |
-
-**Purpose:** Specifies where to capture RGB values during color calibration
 
 ### New Layer
 
@@ -294,15 +311,15 @@ Complete guide to configuring Pyaint's settings and tools.
 
 **Fields:**
 
-| Field | Type | Description |
-|--------|--------|-------------|
+| Field | Type | Default | Description |
+|--------|--------|----------|-------------|
 | `status` | bool | True if initialized |
 | `coords` | array | [x, y] button coordinates |
-| `enabled` | bool | Whether to automatically create layers |
+| `enabled` | bool | false | Whether to automatically create layers |
 | `modifiers` | object | CTRL/ALT/SHIFT key flags |
 
 **Behavior:**
-- If enabled: clicks new layer button before each color change
+- If enabled: Clicks new layer button before each color change
 - Waits 0.75 seconds after click for layer to be created
 - Supports modifier keys (useful if app requires keyboard shortcut)
 
@@ -312,16 +329,16 @@ Complete guide to configuring Pyaint's settings and tools.
 
 **Fields:**
 
-| Field | Type | Description |
-|--------|--------|-------------|
+| Field | Type | Default | Description |
+|--------|--------|----------|-------------|
 | `status` | bool | True if initialized |
 | `coords` | array | [x, y] button coordinates |
-| `enabled` | bool | Whether to click color picker button |
-| `delay` | float | Time to wait after click (0.01-5.0s) |
+| `enabled` | bool | false | Whether to click color picker button |
+| `delay` | float | 0.1 | Time to wait after click (0.01-5.0s) |
 | `modifiers` | object | CTRL/ALT/SHIFT key flags |
 
 **Behavior:**
-- If enabled: clicks color button before each color change
+- If enabled: Clicks color button before each palette selection
 - Waits configured delay for color picker to open
 - Supports modifier keys (useful if app requires keyboard shortcut)
 
@@ -331,18 +348,19 @@ Complete guide to configuring Pyaint's settings and tools.
 
 **Fields:**
 
-| Field | Type | Description |
-|--------|--------|-------------|
+| Field | Type | Default | Description |
+|--------|--------|----------|-------------|
 | `status` | bool | True if initialized |
 | `coords` | array | [x, y] button coordinates |
-| `enabled` | bool | Whether to click confirmation button |
-| `delay` | float | Time to wait after click (0.01-5.0s) |
+| `enabled` | bool | false | Whether to click confirmation button |
+| `delay` | float | 0.1 | Time to wait after click (0.01-5.0s) |
 | `modifiers` | object | CTRL/ALT/SHIFT key flags |
 
 **Behavior:**
-- If enabled: clicks confirmation button after color selection
+- If enabled: Clicks confirmation button after color selection in spectrum
 - Waits configured delay after click
-- Supports modifier keys
+- When enabled: Color button is still clicked to open color picker, but this confirms the selection
+- Supports modifier keys (useful if app requires keyboard shortcut)
 
 ---
 
@@ -372,9 +390,8 @@ Complete guide to configuring Pyaint's settings and tools.
 
 | Field | Type | Default | Description |
 |--------|--------|----------|-------------|
-| `ignore_white_pixels` | bool | false | Skip drawing white pixels |
+| `ignore_white_pixels` | bool | true | Skip drawing white pixels |
 | `use_custom_colors` | bool | false | Use custom color spectrum |
-| `skip_first_color` | bool | false | Skip first color when drawing |
 
 ### Pause Key
 
@@ -392,6 +409,20 @@ Complete guide to configuring Pyaint's settings and tools.
 - Function keys (F1-F12)
 - Special keys (arrows, etc.)
 
+### Skip First Color
+
+**Purpose:** Skip drawing the first color in the color map
+
+**Field:**
+
+| Field | Type | Default | Description |
+|--------|--------|----------|-------------|
+| `skip_first_color` | bool | false | Skip first color when drawing |
+
+**Behavior:**
+- When enabled, the first color in the sorted color map is skipped
+- Useful when you want to start with a specific color manually selected
+
 ---
 
 ## Default Values
@@ -404,6 +435,7 @@ Complete guide to configuring Pyaint's settings and tools.
 | Pixel Size | 12 | 3 | 50 |
 | Precision | 0.9 | 0.0 | 1.0 |
 | Jump Delay | 0.5s | 0.0s | 2.0s |
+| Jump Threshold | 5 | 1 | 100 |
 
 ### Tool Configuration
 
@@ -416,10 +448,15 @@ All tools default to not initialized (`status: false`).
 | pause_key | 'p' | Pause/resume key |
 | skip_first_color | false | Skip first color when drawing |
 | calibration_settings.step_size | 2 | Calibration scan step |
-| drawing_options.ignore_white_pixels | false | Skip white pixels |
+| drawing_options.ignore_white_pixels | true | Skip white pixels |
 | drawing_options.use_custom_colors | false | Use custom colors |
 | mspaint_mode.enabled | false | Enable double-click on palette |
 | mspaint_mode.delay | 0.5 | Delay between double-clicks in seconds |
+| new_layer.enabled | false | Enable new layer creation |
+| color_button.enabled | false | Enable color button |
+| color_button.delay | 0.1 | Color button delay |
+| color_button_okay.enabled | false | Enable color button okay |
+| color_button_okay.delay | 0.1 | Color button okay delay |
 
 ---
 
@@ -438,7 +475,7 @@ Most settings can be changed through the main window:
 
 Edit `config.json` directly in a text editor.
 
-**Warning:** Invalid JSON will cause the application to use defaults.
+**Warning:** Invalid JSON will cause application to use defaults.
 
 ### Resetting Configuration
 
@@ -455,8 +492,8 @@ To reset all settings:
 
 The File Management section in the Control Panel provides two buttons for managing configuration files:
 
-- **Remove Calibration**: Deletes the color calibration file
-- **Reset Config**: Deletes the main configuration file
+- **Remove Calibration**: Deletes color calibration file
+- **Reset Config**: Deletes main configuration file
 
 ### Remove Calibration
 
@@ -471,7 +508,7 @@ The File Management section in the Control Panel provides two buttons for managi
 
 **Actions:**
 1. Click "Remove Calibration" button
-2. Confirm the deletion in the dialog
+2. Confirm deletion in dialog
 3. Color calibration map is cleared from memory
 4. Next drawing will require new calibration or revert to keyboard input
 
@@ -487,7 +524,7 @@ The File Management section in the Control Panel provides two buttons for managi
 
 **What is Lost:**
 - All tool configurations (Palette, Canvas, Custom Colors, etc.)
-- All drawing settings (Delay, Pixel Size, Precision, Jump Delay)
+- All drawing settings (Delay, Pixel Size, Precision, Jump Delay, Jump Threshold)
 - All feature toggles (New Layer, Color Button, MSPaint Mode, etc.)
 - Pause key configuration
 - Last used image URL
@@ -495,13 +532,13 @@ The File Management section in the Control Panel provides two buttons for managi
 **When to Use:**
 - Configuration is corrupted or causing issues
 - You want to start completely fresh
-- Settings are lost and need to reconfigure everything
+- Settings are lost and need to be reconfigured
 
 **Actions:**
 1. Click "Reset Config" button
-2. Confirm the reset in the warning dialog
+2. Confirm reset in warning dialog
 3. Configuration file is deleted
-4. Restart the application to load default settings
+4. Restart application to load default settings
 
 **Restoration:** You will need to:
 1. Restart Pyaint (application will use built-in defaults)
@@ -549,6 +586,7 @@ Check the tooltip/status label at the bottom of the window for detailed feedback
 - Pixel size must be between 3 and 50
 - Precision must be between 0.0 and 1.0
 - Jump delay must be between 0.0 and 2.0
+- Jump threshold must be between 1 and 100
 
 ---
 
@@ -556,5 +594,6 @@ Check the tooltip/status label at the bottom of the window for detailed feedback
 
 - [API Reference](./api.md) - Detailed API documentation
 - [Architecture](./architecture.md) - System architecture details
+- [Tutorial](./tutorial.md) - Step-by-step usage guide
 - [Troubleshooting](./troubleshooting.md) - Common issues and solutions
 - [Usage Guide](./usage-guide.md) - Step-by-step usage instructions

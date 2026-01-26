@@ -117,10 +117,11 @@ In the Control Panel, adjust these settings:
 | Setting | Range | Description | Recommended |
 |----------|--------|-------------|--------------|
 | Delay | 0.01-10.0s | Stroke timing | 0.1s |
-| Pixel Size | 3-50 | Detail level | 12 |
+| Pixel Size | 1-50 | Detail level | 12 |
 | Precision | 0.0-1.0 | Color accuracy | 0.9 |
 | Jump Delay | 0.0-2.0s | Cursor jump delay | 0.5s |
 | Calibration Step | 1-10 | Pixel step for calibration | 2 |
+| Jump Threshold | 1-100 | Pixel distance for jump detection (default: 5) | 5 |
 
 **Tips:**
 - Start with default values and adjust based on test results
@@ -140,12 +141,13 @@ Toggle these checkboxes as needed:
 
 - **Ignore White Pixels**: Skip drawing white areas (useful for white canvas)
 - **Use Custom Colors**: Enable advanced color mixing (requires Custom Colors tool)
+- **Skip First Color**: Skip the first color in the drawing sequence (useful when first color is background)
 - **Enable New Layer**: Automatically create new layers for each color
 - **Enable Color Button**: Click color picker button before selecting colors
 - **Enable Color Button Okay**: Click confirmation button after color selection
 - **Enable MSPaint Mode**: Double-click on palette instead of single click (optional)
-    - **MSPaint Mode checkbox**: Enable/disable double-click behavior
-    - **MSPaint Mode delay**: Delay between double-clicks in seconds (default: 0.5)
+    - **Enable double-click checkbox**: Enable/disable double-click behavior
+    - **MSPaint Delay (s)**: Delay between double-clicks in seconds (default: 0.5, range: 0.01-5.0s)
 - **Color Button delay entry**: Set delay after color button click (0.01-5.0s)
 - **Color Button Okay enable checkbox**: Enable/disable clicking confirmation button
 - **Color Button Okay delay entry**: Set delay after color button okay click (0.01-5.0s)
@@ -168,7 +170,7 @@ The File Management section provides buttons to manage configuration files direc
 
 **Steps:**
 1. Click **"Remove Calibration"** button in Control Panel
-2. Confirm deletion in the dialog
+2. Confirm deletion in the warning dialog
 3. Status message will confirm success or error
 
 **After Deletion:**

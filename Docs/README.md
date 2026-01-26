@@ -164,6 +164,14 @@ Configuration wizard for initializing tools with advanced features.
 
 Configuration is stored in `config.json` with the following structure:
 
+### Configuration Files
+
+| File | Purpose |
+|------|---------|
+| `config.json` | Main configuration file with all settings and tool configurations |
+| `color_calibration.json` | Color calibration data for custom colors (RGB to position mapping) |
+| `palette_extraction_temp.json` | Temporary file for interactive palette extraction data |
+
 ```json
 {
   "drawing_settings": {

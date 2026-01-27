@@ -8,6 +8,8 @@ from collections import defaultdict
 from typing import List, Tuple, Dict, Set, Optional
 from PIL import Image
 import math
+import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class ColorPaletteGenerator:
@@ -130,13 +132,14 @@ class ColorPaletteGenerator:
         
         return groups
     
-    def get_palette(self, num_colors: int, algorithm: str = "frequency") -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]:
+    def get_palette(self, num_colors: int, algorithm: str = "frequency", progress_callback=None) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]:
         """
-        Get the top N colors from the image using specified algorithm.
+        Get top N colors from image using specified algorithm.
         
         Args:
             num_colors: Number of colors to return (1-256)
-            algorithm: Selection algorithm ('frequency', 'dominant_shades', 'rare_shades')
+            algorithm: Selection algorithm ('frequency', 'dominant_shades', 'rare_shades', 'kmeans')
+            progress_callback: Optional callback function(progress_percent) for K-Means progress
         
         Returns:
             Tuple of:
@@ -145,6 +148,7 @@ class ColorPaletteGenerator:
             - Dictionary of color_index -> pixel_count
         """
         self.algorithm = algorithm
+        self.progress_callback = progress_callback
         
         if not self.sorted_colors:
             self.analyze_image()
@@ -156,6 +160,8 @@ class ColorPaletteGenerator:
             return self._get_by_dominant_shades(num_colors)
         elif algorithm == "rare_shades":
             return self._get_by_rare_shades(num_colors)
+        elif algorithm == "kmeans":
+            return self._get_by_kmeans(num_colors)
         else:
             return self._get_by_frequency(num_colors)
     
@@ -308,6 +314,352 @@ class ColorPaletteGenerator:
         except Exception as e:
             print(f"[PaletteGen] Failed to export: {e}")
             return False
+    
+    def _get_by_kmeans(self, num_colors: int) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]:
+        """
+        Get palette using K-Means clustering algorithm (multi-threaded).
+        
+        This algorithm groups similar colors into clusters and calculates
+        their averages (centroids), providing a more representative palette.
+        
+        Args:
+            num_colors: Number of clusters (1-256)
+        
+        Returns:
+            Tuple of:
+            - List of (r, g, b) tuples for cluster centroids
+            - List of pixel counts for each centroid
+            - Dictionary of color_index -> pixel_count
+        """
+        # Clamp num_colors to available colors
+        num_colors = min(num_colors, len(self.sorted_colors))
+        
+        if num_colors == 0:
+            return [], [], {}
+        
+        print(f"[PaletteGen] Running K-Means with k={num_colors} (multi-threaded)")
+        
+        # Report progress
+        if self.progress_callback:
+            self.progress_callback(5)  # Starting initialization
+        print(f"[PaletteGen] Progress: 5% - Starting initialization")
+        
+        # Prepare data: list of (color, count) for weighting
+        data = []
+        for color, count in self.sorted_colors:
+            # Replicate colors based on count for weighted sampling
+            # But limit to avoid memory issues with large images
+            weight = min(count, 100)  # Cap weight at 100
+            for _ in range(weight):
+                data.append(color)
+        
+        # Report progress
+        if self.progress_callback:
+            self.progress_callback(10)  # Data prepared
+        print(f"[PaletteGen] Progress: 10% - Data prepared and weighted sampling complete")
+        
+        # Initialize centroids using k-means++ initialization
+        centroids = self._kmeans_plus_plus_init(data, num_colors)
+        
+        # Report progress
+        if self.progress_callback:
+            self.progress_callback(15)  # Centroids initialized
+        print(f"[PaletteGen] Progress: 15% - Centroids initialized (K-Means++)")
+        
+        # Determine number of threads to use
+        num_threads = min(4, max(1, num_colors))  # Use up to 4 threads
+        
+        # Run K-Means iterations
+        self._current_centroids = centroids  # Store for thread access
+        max_iterations = 20
+        iteration_start_progress = 15
+        iteration_end_progress = 90
+        
+        for iteration in range(max_iterations):
+            # Calculate progress for this iteration
+            iteration_progress = iteration_start_progress + (iteration / max_iterations) * (iteration_end_progress - iteration_start_progress)
+            print(f"[PaletteGen] Progress: {int(iteration_progress)}% - Iteration {iteration + 1}/{max_iterations}")
+            
+            # Assign each point to nearest centroid (parallelized)
+            clusters = [[] for _ in range(num_colors)]
+            
+            # Use ThreadPoolExecutor for parallel distance calculations
+            with ThreadPoolExecutor(max_workers=num_threads) as executor:
+                # Submit distance calculation tasks
+                future_to_color = {
+                    executor.submit(self._find_nearest_centroid, color, centroids): color
+                    for color in data
+                }
+                
+                # Collect results and update progress
+                completed = 0
+                total_tasks = len(future_to_color)
+                for future in as_completed(future_to_color.keys()):
+                    color = future_to_color[future]
+                    nearest_idx = future.result()
+                    clusters[nearest_idx].append(color)
+                    completed += 1
+                    
+                    # Report incremental progress during assignment
+                    if completed % (total_tasks // 10) == 0 or completed == total_tasks:
+                        assign_progress = iteration_progress + (completed / total_tasks) * 0.3
+                        if self.progress_callback:
+                            self.progress_callback(int(assign_progress))
+            
+            # Calculate new centroids as average of assigned colors (parallelized)
+            new_centroids = []
+            
+            with ThreadPoolExecutor(max_workers=num_threads) as executor:
+                # Submit centroid calculation tasks
+                future_to_cluster = {
+                    executor.submit(self._calculate_weighted_average, cluster): cluster
+                    for cluster in clusters
+                }
+                
+                # Collect results in order
+                for cluster in clusters:
+                    if cluster:
+                        future = list(future_to_cluster.keys())[clusters.index(cluster)]
+                        new_centroids.append(future.result())
+                    else:
+                        # Empty cluster, keep old centroid or reinitialize
+                        new_centroids.append(centroids[len(new_centroids)])
+            
+            # Check for convergence
+            if self._centroids_converged(centroids, new_centroids):
+                print(f"[PaletteGen] K-Means converged after {iteration + 1} iterations")
+                centroids = new_centroids
+                self._current_centroids = new_centroids
+                break
+            
+            centroids = new_centroids
+            self._current_centroids = new_centroids
+            
+            # Report progress after each iteration
+            if self.progress_callback:
+                self.progress_callback(int(iteration_progress))
+        
+        # Report progress - starting count calculation
+        if self.progress_callback:
+            self.progress_callback(92)
+        print(f"[PaletteGen] Progress: 92% - Calculating counts for each centroid")
+        
+        # Calculate counts for each centroid (parallelized)
+        counts = []
+        
+        # Submit count calculation tasks
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            futures = []
+            for centroid in centroids:
+                centroid_idx = centroids.index(centroid)
+                future = executor.submit(
+                    self._count_colors_for_centroid,
+                    centroid_idx
+                )
+                futures.append(future)
+            
+            # Collect results in order
+            for future in futures:
+                counts.append(future.result())
+        
+        # Report progress - sorting
+        if self.progress_callback:
+            self.progress_callback(95)
+        print(f"[PaletteGen] Progress: 95% - Sorting centroids by cluster size")
+        
+        # Sort centroids by count (descending)
+        sorted_indices = sorted(range(len(centroids)), key=lambda i: counts[i], reverse=True)
+        sorted_centroids = [centroids[i] for i in sorted_indices]
+        sorted_counts = [counts[i] for i in sorted_indices]
+        
+        # Convert to integer RGB values
+        final_colors = [(int(r), int(g), int(b)) for r, g, b in sorted_centroids]
+        
+        # Report progress - finalizing
+        if self.progress_callback:
+            self.progress_callback(98)
+        print(f"[PaletteGen] Progress: 98% - Converting to integer RGB values")
+        
+        color_map = {i: sorted_counts[i] for i in range(len(final_colors))}
+        
+        print(f"[PaletteGen] K-Means complete: {len(final_colors)} colors")
+        
+        # Report completion
+        if self.progress_callback:
+            self.progress_callback(100)
+        print(f"[PaletteGen] Progress: 100% - Complete")
+        
+        return final_colors, sorted_counts, color_map
+    
+    def _kmeans_plus_plus_init(self, data: List[Tuple[int, int, int]], k: int) -> List[Tuple[float, float, float]]:
+        """
+        Initialize K-Means centroids using K-Means++ algorithm.
+        
+        This spreads initial centroids across the color space for better convergence.
+        
+        Args:
+            data: List of color samples
+            k: Number of centroids
+        
+        Returns:
+            List of k centroid colors as (r, g, b) floats
+        """
+        centroids = []
+        
+        # Choose first centroid randomly
+        first_idx = random.randint(0, len(data) - 1)
+        centroids.append(tuple(float(x) for x in data[first_idx]))
+        
+        # Choose remaining centroids with probability proportional to distance squared
+        for _ in range(1, k):
+            distances = []
+            for color in data:
+                # Find minimum distance to any existing centroid
+                min_dist = float('inf')
+                for centroid in centroids:
+                    dist = self._color_distance(color, centroid)
+                    if dist < min_dist:
+                        min_dist = dist
+                distances.append(min_dist ** 2)
+            
+            # Choose new centroid based on weighted probability
+            total_dist = sum(distances)
+            if total_dist == 0:
+                next_idx = random.randint(0, len(data) - 1)
+            else:
+                r = random.uniform(0, total_dist)
+                cumulative = 0
+                for i, d in enumerate(distances):
+                    cumulative += d
+                    if cumulative >= r:
+                        next_idx = i
+                        break
+                else:
+                    next_idx = len(data) - 1
+            
+            centroids.append(tuple(float(x) for x in data[next_idx]))
+        
+        return centroids
+    
+    def _find_nearest_centroid(self, color: Tuple[int, int, int], 
+                            centroids: List[Tuple[float, float, float]]) -> int:
+        """
+        Find the index of the nearest centroid to a color.
+        
+        Args:
+            color: RGB color tuple
+            centroids: List of centroid colors
+        
+        Returns:
+            Index of nearest centroid
+        """
+        min_dist = float('inf')
+        nearest_idx = 0
+        
+        for i, centroid in enumerate(centroids):
+            dist = self._color_distance(color, centroid)
+            if dist < min_dist:
+                min_dist = dist
+                nearest_idx = i
+        
+        return nearest_idx
+    
+    def _color_distance(self, color1: Tuple[int, int, int], 
+                     color2: Tuple[float, float, float]) -> float:
+        """
+        Calculate Euclidean distance between two colors in RGB space.
+        
+        Args:
+            color1: First color as (r, g, b) ints
+            color2: Second color as (r, g, b) floats
+        
+        Returns:
+            Euclidean distance
+        """
+        r1, g1, b1 = color1
+        r2, g2, b2 = color2
+        return math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2)
+    
+    def _calculate_weighted_average(self, colors: List[Tuple[int, int, int]]) -> Tuple[float, float, float]:
+        """
+        Calculate average color from a list of colors.
+        
+        Args:
+            colors: List of RGB color tuples
+        
+        Returns:
+            Average color as (r, g, b) floats
+        """
+        if not colors:
+            return (128.0, 128.0, 128.0)  # Default to gray
+        
+        total_r = 0.0
+        total_g = 0.0
+        total_b = 0.0
+        
+        for r, g, b in colors:
+            total_r += r
+            total_g += g
+            total_b += b
+        
+        n = len(colors)
+        return (total_r / n, total_g / n, total_b / n)
+    
+    def _centroids_converged(self, old: List[Tuple[float, float, float]], 
+                         new: List[Tuple[float, float, float]], 
+                         threshold: float = 1.0) -> bool:
+        """
+        Check if centroids have converged (changed less than threshold).
+        
+        Args:
+            old: Previous centroids
+            new: New centroids
+            threshold: Convergence threshold (default 1.0)
+        
+        Returns:
+            True if converged, False otherwise
+        """
+        if len(old) != len(new):
+            return False
+        
+        for old_c, new_c in zip(old, new):
+            if self._color_distance(
+                (int(old_c[0]), int(old_c[1]), int(old_c[2])),
+                (int(new_c[0]), int(new_c[1]), int(new_c[2]))
+            ) > threshold:
+                return False
+        
+        return True
+    
+    def _count_colors_for_centroid(self, centroid_idx: int) -> int:
+        """
+        Count colors closest to a specific centroid.
+        
+        Args:
+            centroid_idx: Index of the centroid in centroids list
+        
+        Returns:
+            Total pixel count for colors closest to this centroid
+        """
+        total = 0
+        for color, count in self.sorted_colors:
+            if self._find_nearest_centroid(color, self._get_current_centroids()) == centroid_idx:
+                total += count
+        return total
+    
+    def _get_current_centroids(self) -> List[Tuple[float, float, float]]:
+        """
+        Get current centroids being used in K-Means iteration.
+        
+        Returns:
+            List of current centroids
+        """
+        # This is a helper to access centroids from within iteration
+        # In practice, centroids are passed as parameters, but we need
+        # to store them temporarily for multi-threaded access
+        if hasattr(self, '_current_centroids'):
+            return self._current_centroids
+        return []
     
     def get_color_stats(self) -> List[Dict]:
         """

@@ -100,19 +100,58 @@ class PaletteWindow:
         
         ttk.Label(size_frame, text="(1-256 colors)").pack(side=tk.LEFT, padx=5)
         
-        # Algorithm selection
-        ttk.Label(size_frame, text="Algorithm:").pack(side=tk.LEFT, padx=(20, 5))
+        # Algorithm selection frame
+        algo_frame = ttk.Frame(controls_frame)
+        algo_frame.pack(fill=tk.X, pady=5)
         
+        ttk.Label(algo_frame, text="Algorithm:").pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Radio buttons for algorithm selection (prevents accidental K-Means selection)
         self.algorithm_var = tk.StringVar(value=self.current_algorithm)
-        algorithm_combo = ttk.Combobox(
-            size_frame,
-            textvariable=self.algorithm_var,
-            values=("frequency", "dominant_shades", "rare_shades"),
-            state="readonly",
-            width=15
+        
+        algo_radio_frame = ttk.Frame(algo_frame)
+        algo_radio_frame.pack(side=tk.LEFT)
+        
+        ttk.Radiobutton(
+            algo_radio_frame,
+            text="Frequency",
+            variable=self.algorithm_var,
+            value="frequency",
+            command=self._on_algorithm_change
+        ).pack(side=tk.LEFT, padx=2)
+        
+        ttk.Radiobutton(
+            algo_radio_frame,
+            text="Dominant",
+            variable=self.algorithm_var,
+            value="dominant_shades",
+            command=self._on_algorithm_change
+        ).pack(side=tk.LEFT, padx=2)
+        
+        ttk.Radiobutton(
+            algo_radio_frame,
+            text="Rare",
+            variable=self.algorithm_var,
+            value="rare_shades",
+            command=self._on_algorithm_change
+        ).pack(side=tk.LEFT, padx=2)
+        
+        ttk.Radiobutton(
+            algo_radio_frame,
+            text="K-Means",
+            variable=self.algorithm_var,
+            value="kmeans",
+            command=self._on_algorithm_change
+        ).pack(side=tk.LEFT, padx=2)
+        
+        # Warning label for K-Means
+        self.kmeans_warning_label = ttk.Label(
+            algo_frame,
+            text="⚠ K-Means may take a while for large images",
+            foreground="orange",
+            font=("Arial", 9, "italic")
         )
-        algorithm_combo.pack(side=tk.LEFT)
-        algorithm_combo.bind('<<ComboboxSelected>>', self._on_algorithm_change)
+        self.kmeans_warning_label.pack(side=tk.LEFT, padx=(15, 0))
         
         # Buttons
         button_frame = ttk.Frame(controls_frame)
@@ -166,6 +205,17 @@ class PaletteWindow:
         self.info_label = ttk.Label(info_frame, text="Loading...")
         self.info_label.pack(fill=tk.X)
         
+        # Progress section (initially hidden)
+        self.progress_frame = ttk.Frame(main_frame)
+        self.progress_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        ttk.Label(self.progress_frame, text="Progress:").pack(side=tk.LEFT, padx=(0, 5))
+        self.progress_label = ttk.Label(self.progress_frame, text="", foreground="blue", font=("Arial", 10, "bold"))
+        self.progress_label.pack(side=tk.LEFT)
+        
+        # Hide progress initially
+        self.progress_frame.pack_forget()
+        
         # Focus on size entry
         self.size_entry.focus_set()
     
@@ -188,8 +238,24 @@ class PaletteWindow:
             # Get current algorithm
             self.current_algorithm = self.algorithm_var.get()
             
+            # Show progress for K-Means algorithm
+            if self.current_algorithm == "kmeans":
+                self.progress_frame.pack(fill=tk.X, pady=(5, 0))
+                self.progress_label.config(text="0%")
+                self.window.update()  # Force UI update
+            else:
+                self.progress_frame.pack_forget()
+            
+            # Define progress callback
+            def progress_callback(percent):
+                self.progress_label.config(text=f"{percent}%")
+                self.window.update()  # Force UI update
+            
             # Get palette from generator with selected algorithm
-            self.colors, self.counts, _ = self.generator.get_palette(size, self.current_algorithm)
+            self.colors, self.counts, _ = self.generator.get_palette(size, self.current_algorithm, progress_callback)
+            
+            # Hide progress after completion
+            self.progress_frame.pack_forget()
             
             # Find ties
             ties = self.generator.find_ties(size)
@@ -203,6 +269,8 @@ class PaletteWindow:
             self.resolve_btn.config(state=tk.NORMAL if ties else tk.DISABLED)
             
         except Exception as e:
+            # Hide progress on error
+            self.progress_frame.pack_forget()
             messagebox.showerror("Error", f"Failed to update palette: {e}")
     
     def _draw_color_swatches(self):
@@ -429,4 +497,4 @@ class PaletteWindow:
         if success:
             messagebox.showinfo("Success", f"Palette exported to:\n{file_path}")
         else:
-            messagebox.showerror("Error", "Failed to export palette") 
+            messagebox.showerror("Error", "Failed to export palette")

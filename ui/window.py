@@ -8,6 +8,7 @@ import urllib.error as urllib_error
 import utils
 
 from ui.setup import SetupWindow
+from ui.palette_window import PaletteWindow
 from tkinter import filedialog
 from bot import Bot
 from genericpath import isfile
@@ -180,6 +181,7 @@ class Window:
             'Test Draw',
             'Simple Test Draw',
             'Run Calibration',
+            'Generate Palette',
             'Start'
         ]
 
@@ -194,7 +196,8 @@ class Window:
         buttons[2]['command'] = self.start_test_draw_thread
         buttons[3]['command'] = self.start_simple_test_draw_thread
         buttons[4]['command'] = self.start_calibration_thread
-        buttons[5]['command'] = self.start_draw_thread
+        buttons[5]['command'] = self.start_palette_window
+        buttons[6]['command'] = self.start_draw_thread
 
         self._teclbl = Label(self._cframe, text='Draw Mode', font=Window.TITLE_FONT)
         self._teclbl.grid(column=0, row=6, columnspan=2, sticky='w', padx=5, pady=5)
@@ -2158,3 +2161,28 @@ class Window:
 
         # Let the thread manager know that the task has ended
         self._set_busy(False)
+
+    @is_free
+    def start_palette_window(self):
+        """Open color palette generation window"""
+        try:
+            if not hasattr(self, '_imname') or not self._imname:
+                messagebox.showerror(self.title, 'No image loaded. Please load an image first.')
+                self._set_busy(False)
+                return
+            
+            # Check if image file exists
+            if not os.path.exists(self._imname):
+                messagebox.showerror(self.title, f'Image file not found: {self._imname}')
+                self._set_busy(False)
+                return
+            
+            # Open palette window
+            PaletteWindow(self._root, self._imname, self.bot)
+            
+            self.tlabel['text'] = 'Palette window opened.'
+        except Exception as e:
+            traceback.print_exc()
+            messagebox.showerror(self.title, f'Failed to open palette window: {str(e)}')
+        finally:
+            self._set_busy(False)

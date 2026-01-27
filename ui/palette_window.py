@@ -32,6 +32,7 @@ class PaletteWindow:
         
         # State
         self.current_palette_size = 16
+        self.current_algorithm = "frequency"
         self.colors = []
         self.counts = []
         self.tie_resolved = {}
@@ -97,7 +98,21 @@ class PaletteWindow:
         self.size_entry.bind('<Return>', self._on_size_change)
         self.size_entry.bind('<FocusOut>', self._on_size_change)
         
-        ttk.Label(size_frame, text="(1-256 colors)").pack(side=tk.LEFT)
+        ttk.Label(size_frame, text="(1-256 colors)").pack(side=tk.LEFT, padx=5)
+        
+        # Algorithm selection
+        ttk.Label(size_frame, text="Algorithm:").pack(side=tk.LEFT, padx=(20, 5))
+        
+        self.algorithm_var = tk.StringVar(value=self.current_algorithm)
+        algorithm_combo = ttk.Combobox(
+            size_frame,
+            textvariable=self.algorithm_var,
+            values=("frequency", "dominant_shades", "rare_shades"),
+            state="readonly",
+            width=15
+        )
+        algorithm_combo.pack(side=tk.LEFT)
+        algorithm_combo.bind('<<ComboboxSelected>>', self._on_algorithm_change)
         
         # Buttons
         button_frame = ttk.Frame(controls_frame)
@@ -155,7 +170,7 @@ class PaletteWindow:
         self.size_entry.focus_set()
     
     def _update_palette_preview(self):
-        """Update palette preview based on current size."""
+        """Update palette preview based on current size and algorithm."""
         try:
             # Get palette size from entry
             size = self.size_var.get()
@@ -170,8 +185,11 @@ class PaletteWindow:
             
             self.current_palette_size = size
             
-            # Get palette from generator
-            self.colors, self.counts, _ = self.generator.get_palette(size)
+            # Get current algorithm
+            self.current_algorithm = self.algorithm_var.get()
+            
+            # Get palette from generator with selected algorithm
+            self.colors, self.counts, _ = self.generator.get_palette(size, self.current_algorithm)
             
             # Find ties
             ties = self.generator.find_ties(size)
@@ -267,6 +285,10 @@ class PaletteWindow:
     
     def _on_size_change(self, event=None):
         """Handle palette size change."""
+        self._update_palette_preview()
+    
+    def _on_algorithm_change(self, event=None):
+        """Handle algorithm selection change."""
         self._update_palette_preview()
     
     def _resolve_ties_dialog(self):

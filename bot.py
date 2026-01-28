@@ -182,6 +182,14 @@ class Bot:
         self.overlay_update_thread = None
         self.overlay_stop_event = None
 
+        # Canvas calibration state
+        self.canvas_calibration = {
+            'scale_factor': 1.0,
+            'measured_size': None,
+            'intended_size': [50, 50],
+            'calibration_date': None
+        }
+
         pyautogui.PAUSE = 0.0
         pyautogui.MINIMUM_DURATION = 0.01
 
@@ -572,11 +580,21 @@ class Bot:
         '''
         Processes the requested file as per the flags submitted and returns 
         a table mapping each color to a list of lines that are to be drawn on 
-        the canvas. Each line contains both starting and terminating coordinates.
+        canvas. Each line contains both starting and terminating coordinates.
         '''
         
         self.terminate = False
-        step = int(self.settings[Bot.STEP])
+        
+        # Apply canvas calibration scale factor if available
+        scale_factor = self.canvas_calibration.get('scale_factor', 1.0)
+        if scale_factor != 1.0:
+            step = int(round(self.settings[Bot.STEP] * scale_factor))
+            print(f"[CanvasCalibration] Applied calibration scale factor: {scale_factor:.3f}")
+            print(f"[CanvasCalibration] Original pixel size: {self.settings[Bot.STEP]}")
+            print(f"[CanvasCalibration] Adjusted pixel size: {step}")
+        else:
+            step = int(self.settings[Bot.STEP])
+        
         img = Image.open(file).convert('RGBA')
 
         try:
@@ -1955,3 +1973,290 @@ class Bot:
             return False, None
         cache_data = self.load_cached(cache_file)
         return cache_data is not None, cache_file
+    
+    def calibrate_canvas(self, pattern_size=(50, 50)):
+        '''
+        Calibrate canvas by drawing a checkerboard pattern and measuring the actual size.
+        This helps account for zoom differences between pyaint's coordinate system and
+        the actual drawing application's display.
+        
+        Parameters:
+            pattern_size: Tuple (width, height) of the pattern to draw
+        
+        Returns:
+            Dictionary with calibration results:
+            {
+                'scale_factor': float (e.g., 0.76 for 76%),
+                'measured_size': (width, height) tuple,
+                'intended_size': (width, height) tuple,
+                'calibration_date': string timestamp
+            }
+        '''
+        try:
+            canvas_x, canvas_y, canvas_w, canvas_h = self._canvas
+        except:
+            raise NoCanvasError('Cannot calibrate: canvas is not initialized')
+        
+        print(f"[CanvasCalibration] Starting calibration with intended size: {pattern_size}")
+        print(f"[CanvasCalibration] Canvas area: ({canvas_x}, {canvas_y}, {canvas_w}, {canvas_h})")
+        
+        # Draw checkerboard pattern
+        self._draw_checkerboard_pattern(canvas_x, canvas_y, canvas_w, canvas_h, pattern_size)
+        
+        # Wait a moment for the drawing to complete visually
+        time.sleep(0.5)
+        
+        # Capture and analyze screenshot
+        measured_size = self._measure_drawn_pattern(canvas_x, canvas_y, canvas_w, canvas_h)
+        
+        if measured_size is None:
+            print("[CanvasCalibration] ERROR: Failed to measure pattern")
+            return None
+        
+        # Calculate scale factors
+        intended_w, intended_h = pattern_size
+        measured_w, measured_h = measured_size
+        
+        scale_x = measured_w / intended_w if intended_w > 0 else 1.0
+        scale_y = measured_h / intended_h if intended_h > 0 else 1.0
+        scale_factor = (scale_x + scale_y) / 2
+        
+        # Create calibration results
+        calibration_results = {
+            'scale_factor': scale_factor,
+            'measured_size': measured_size,
+            'intended_size': pattern_size,
+            'calibration_date': time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        # Update bot's canvas calibration state
+        self.canvas_calibration = calibration_results
+        
+        print(f"[CanvasCalibration] Calibration complete!")
+        print(f"[CanvasCalibration] Intended: {intended_w}x{intended_h}")
+        print(f"[CanvasCalibration] Measured: {measured_w}x{measured_h}")
+        print(f"[CanvasCalibration] Scale factor: {scale_factor:.3f} ({scale_factor*100:.1f}%)")
+        
+        return calibration_results
+    
+    def _draw_checkerboard_pattern(self, canvas_x, canvas_y, canvas_w, canvas_h, pattern_size):
+        '''
+        Draw a checkerboard pattern at the center of the canvas.
+        Uses the currently selected color from the palette.
+        
+        Parameters:
+            canvas_x, canvas_y, canvas_w, canvas_h: Canvas coordinates
+            pattern_size: (width, height) of the pattern to draw
+        '''
+        # Get currently selected color
+        try:
+            if self._palette is not None:
+                # Try to use the currently selected color from palette
+                # Default to first color if none is selected
+                current_color = list(self._palette.colors)[0] if self._palette.colors else (0, 0, 0)
+                color_pos = self._palette.colors_pos.get(current_color, None)
+                
+                if color_pos:
+                    # Select this color in the palette
+                    px, py = color_pos
+                    pyautogui.click(px, py)
+                    time.sleep(0.2)
+            else:
+                print("[CanvasCalibration] No palette available, using default drawing")
+        except Exception as e:
+            print(f"[CanvasCalibration] Warning: Could not select color: {e}")
+        
+        # Calculate center position
+        pattern_w, pattern_h = pattern_size
+        start_x = canvas_x + (canvas_w - pattern_w) // 2
+        start_y = canvas_y + (canvas_h - pattern_h) // 2
+        
+        print(f"[CanvasCalibration] Drawing checkerboard at center: ({start_x}, {start_y})")
+        
+        # Create checkerboard pattern: 10x10 grid of 5x5 pixel squares
+        checkerboard_size = 5  # Each checker square is 5x5 pixels
+        num_squares = 10  # 10x10 checkerboard
+        
+        # Draw the checkerboard using mouse movements
+        for row in range(num_squares):
+            for col in range(num_squares):
+                # Determine if this square should be filled (checkerboard pattern)
+                is_filled = (row + col) % 2 == 0
+                
+                if is_filled:
+                    # Calculate square position
+                    sq_x = start_x + col * checkerboard_size
+                    sq_y = start_y + row * checkerboard_size
+                    
+                    # Draw filled square
+                    sq_end_x = sq_x + checkerboard_size
+                    sq_end_y = sq_y + checkerboard_size
+                    
+                    pyautogui.moveTo(sq_x, sq_y)
+                    pyautogui.mouseDown(button='left')
+                    pyautogui.dragTo(sq_end_x, sq_end_y, 0.05, button='left')
+                    pyautogui.mouseUp()
+                    
+                    # Small delay between squares
+                    time.sleep(0.01)
+        
+        print(f"[CanvasCalibration] Checkerboard pattern drawn")
+    
+    def _measure_drawn_pattern(self, canvas_x, canvas_y, canvas_w, canvas_h):
+        '''
+        Capture a screenshot of the canvas and measure the actual size of the drawn pattern.
+        Uses edge detection to find the boundaries of the colored pattern.
+        
+        Parameters:
+            canvas_x, canvas_y, canvas_w, canvas_h: Canvas coordinates
+        
+        Returns:
+            Tuple (width, height) of the measured pattern, or None if measurement failed
+        '''
+        print(f"[CanvasCalibration] Capturing canvas screenshot...")
+        
+        # Capture screenshot of canvas area
+        try:
+            canvas_screenshot = ImageGrab.grab(bbox=(canvas_x, canvas_y, canvas_x + canvas_w, canvas_y + canvas_h))
+        except Exception as e:
+            print(f"[CanvasCalibration] ERROR: Failed to capture screenshot: {e}")
+            return None
+        
+        # Convert to RGB for pixel analysis
+        if canvas_screenshot.mode != 'RGB':
+            canvas_screenshot = canvas_screenshot.convert('RGB')
+        
+        # Load pixel data
+        pixels = canvas_screenshot.load()
+        img_w, img_h = canvas_screenshot.size
+        
+        print(f"[CanvasCalibration] Screenshot size: {img_w}x{img_h}")
+        
+        # Find pattern boundaries
+        min_x, min_y = img_w, img_h
+        max_x, max_y = 0, 0
+        
+        # Get a reference color from the center (should be part of the pattern)
+        center_x = img_w // 2
+        center_y = img_h // 2
+        try:
+            reference_color = pixels[center_x, center_y]
+        except (IndexError, TypeError):
+            # Fallback to first pixel
+            reference_color = pixels[0, 0]
+        
+        print(f"[CanvasCalibration] Reference color (center): {reference_color}")
+        
+        # Scan for pattern edges
+        # Find min and max coordinates where pixels match reference color
+        tolerance = 50  # Color tolerance for matching
+        
+        for y in range(img_h):
+            for x in range(img_w):
+                try:
+                    r, g, b = pixels[x, y]
+                    # Check if this pixel is part of the pattern (similar to reference color)
+                    color_diff = abs(r - reference_color[0]) + abs(g - reference_color[1]) + abs(b - reference_color[2])
+                    
+                    if color_diff <= tolerance:
+                        # Update boundaries
+                        min_x = min(min_x, x)
+                        min_y = min(min_y, y)
+                        max_x = max(max_x, x)
+                        max_y = max(max_y, y)
+                except (IndexError, TypeError):
+                    continue
+        
+        # Calculate measured size
+        measured_w = max_x - min_x + 1  # +1 because 0-indexed
+        measured_h = max_y - min_y + 1
+        
+        print(f"[CanvasCalibration] Pattern boundaries: ({min_x}, {min_y}) to ({max_x}, {max_y})")
+        print(f"[CanvasCalibration] Measured size: {measured_w}x{measured_h}")
+        
+        # Validate measurement (should be close to expected size)
+        if measured_w < 10 or measured_h < 10:
+            print(f"[CanvasCalibration] WARNING: Measured size seems too small, measurement may be incorrect")
+            return None
+        
+        return (measured_w, measured_h)
+    
+    def apply_canvas_calibration(self):
+        '''
+        Apply the canvas calibration scale factor to the current drawing settings.
+        Returns the effective pixel size after applying calibration.
+        '''
+        scale_factor = self.canvas_calibration.get('scale_factor', 1.0)
+        
+        # Apply to pixel size (step size)
+        original_step = self.settings[Bot.STEP]
+        effective_step = int(round(original_step * scale_factor))
+        
+        print(f"[CanvasCalibration] Applying calibration:")
+        print(f"[CanvasCalibration] Original pixel size: {original_step}")
+        print(f"[CanvasCalibration] Scale factor: {scale_factor:.3f}")
+        print(f"[CanvasCalibration] Effective pixel size: {effective_step}")
+        
+        return effective_step
+    
+    def save_canvas_calibration(self, filepath='canvas_calibration.json'):
+        '''
+        Save canvas calibration data to a JSON file.
+        
+        Parameters:
+            filepath: Path to JSON file to save
+        
+        Returns:
+            True on success, False on failure
+        '''
+        if self.canvas_calibration is None:
+            print("[CanvasCalibration] No calibration data to save.")
+            return False
+        
+        try:
+            calibration_json = {
+                'scale_factor': self.canvas_calibration['scale_factor'],
+                'measured_size': list(self.canvas_calibration['measured_size']),
+                'intended_size': list(self.canvas_calibration['intended_size']),
+                'calibration_date': self.canvas_calibration['calibration_date']
+            }
+            
+            with open(filepath, 'w') as f:
+                json.dump(calibration_json, f, indent=2)
+            
+            print(f"[CanvasCalibration] Calibration data saved to: {filepath}")
+            return True
+        except Exception as e:
+            print(f"[CanvasCalibration] Error saving calibration data: {e}")
+            return False
+    
+    def load_canvas_calibration(self, filepath='canvas_calibration.json'):
+        '''
+        Load canvas calibration data from a JSON file.
+        
+        Parameters:
+            filepath: Path to JSON file to load
+        
+        Returns:
+            True on success, False on failure
+        '''
+        try:
+            with open(filepath, 'r') as f:
+                calibration_json = json.load(f)
+            
+            self.canvas_calibration = {
+                'scale_factor': calibration_json['scale_factor'],
+                'measured_size': tuple(calibration_json['measured_size']),
+                'intended_size': tuple(calibration_json['intended_size']),
+                'calibration_date': calibration_json['calibration_date']
+            }
+            
+            print(f"[CanvasCalibration] Calibration data loaded from: {filepath}")
+            print(f"[CanvasCalibration] Scale factor: {self.canvas_calibration['scale_factor']:.3f}")
+            return True
+        except FileNotFoundError:
+            print(f"[CanvasCalibration] Calibration file not found: {filepath}")
+            return False
+        except Exception as e:
+            print(f"[CanvasCalibration] Error loading calibration data: {e}")
+            return False

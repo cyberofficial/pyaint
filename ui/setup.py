@@ -53,85 +53,126 @@ class SetupWindow:
 
         # LAYOUT
         self._root.columnconfigure(0, weight=1, uniform='column')
+        self._root.columnconfigure(1, weight=1, uniform='column')
         self._root.rowconfigure(0, weight=1, uniform='row')
-        self._root.rowconfigure(1, weight=1, uniform='row')
         
         self._tools_panel = self._init_tools_panel()
         self._tools_panel.grid(column=0, row=0, padx=5, pady=5, sticky='nsew')
 
         self._preview_panel = self._init_preview_panel()
-        self._preview_panel.grid(column=0, row=1, sticky='nsew', padx=5, pady=5)
+        self._preview_panel.grid(column=1, row=0, sticky='nsew', padx=5, pady=5)
 
     def _init_tools_panel(self):
-        frame = LabelFrame(self._root, text='Tools')
+        frame = LabelFrame(self._root, text='Tools', padding=10)
 
-        for i in range(2):
-            frame.columnconfigure(i, weight=1, uniform='column')
-        frame.columnconfigure(2, weight=2, uniform='column')
-        for i in range(3):
-            frame.rowconfigure(i, weight=1, uniform='row')
+        # Configure column weights for better layout distribution
+        frame.columnconfigure(0, weight=0, minsize=150)  # Tool name
+        frame.columnconfigure(1, weight=0, minsize=120)  # Status
+        frame.columnconfigure(2, weight=1)               # Settings
+
+        # Configure row weights with consistent spacing
+        for i in range(len(self.tools)):
+            frame.rowconfigure(i, weight=1, minsize=80)
 
         self._statuses = {}
+
+        # Define consistent button styling
+        button_width = 12
+        button_height = 1
+        button_padx = 4
+        button_pady = 4
 
         for idt, (k, v) in enumerate(self.tools.items()):
             # Use the 'name' field for display if it exists, otherwise use the key
             display_name = v.get('name', k) if isinstance(v, dict) else k
-            Label(frame, text=display_name, font=SetupWindow.TITLE_FONT).grid(column=0, row=idt, sticky='w', padx=5, pady=5)
+            
+            # Tool name label with consistent padding
+            Label(frame, text=display_name, font=SetupWindow.TITLE_FONT).grid(
+                column=0, row=idt, sticky='w', padx=10, pady=8
+            )
+            
+            # Status label with consistent styling
             status = Label(
-                frame, 
-                text='INITIALIZED' if v['status'] else 'NOT INITIALIZED', 
-                foreground='white', 
+                frame,
+                text='INITIALIZED' if v['status'] else 'NOT INITIALIZED',
+                foreground='white',
                 background='green' if v['status'] else 'red',
                 justify='center',
-                anchor='center'
+                anchor='center',
+                width=14
             )
-            status.grid(column=1, row=idt, sticky='ew', padx=10)
+            status.grid(column=1, row=idt, padx=10, pady=8)
             self._statuses[k] = status
 
+            # Settings frame with proper configuration
             settings_frame = Frame(frame)
-            for i in range(4):
-                settings_frame.columnconfigure(i, weight=1, uniform='column')
-            settings_frame.rowconfigure(0, weight=1, uniform='row')
+            settings_frame.columnconfigure(0, weight=0, minsize=button_width * 8)  # Initialize button
+            settings_frame.columnconfigure(1, weight=0, minsize=button_width * 8)  # Preview/Edit button
+            settings_frame.columnconfigure(2, weight=0)  # Modifier checkboxes or extra controls
+            settings_frame.columnconfigure(3, weight=0)  # Additional controls
+            settings_frame.rowconfigure(0, weight=1)
+            settings_frame.rowconfigure(1, weight=1)
 
-            # Do not write the callback as "lambda : self._start_listening(tool)" as this will cause only the last tool to be registered in every callback
-            # Instead, do "lambda t=tool : self._start_listening(t)" which will pass the tool of the current iteration for every new callback.
-            # (Note that t here stores the current tool as a default argument)
-            Button(settings_frame, text='Initialize', command=lambda n=k, t=v : self._start_listening(n, t)).grid(column=0, columnspan=2, row=0, sticky='ew', padx=5, pady=5)
+            # Initialize button with consistent sizing
+            Button(settings_frame, text='Initialize',
+                   width=button_width,
+                   command=lambda n=k, t=v : self._start_listening(n, t)).grid(
+                column=0, row=0, padx=button_padx, pady=button_pady, sticky='ew'
+            )
             
             if k == 'New Layer' or k == 'Color Button' or k == 'Color Button Okay':
-                # Create modifier checkboxes (CTRL, ALT, SHIFT)
+                # Create modifier checkboxes (CTRL, ALT, SHIFT) with consistent styling
                 from tkinter import Checkbutton, IntVar
                 self._mod_vars = getattr(self, '_mod_vars', {})
                 mv = {}
                 mods = v.get('modifiers', {}) if isinstance(v, dict) else {}
+                
+                # Modifier frame for better organization
+                mod_frame = Frame(settings_frame)
+                mod_frame.grid(column=1, row=0, columnspan=3, sticky='w', padx=button_padx, pady=button_pady)
+                
                 for ci, name in enumerate(('ctrl', 'alt', 'shift')):
                     iv = IntVar()
                     iv.set(1 if mods.get(name, False) else 0)
-                    # FIXED: Capture k as default argument tk to avoid lambda closure bug
-                    cb = Checkbutton(settings_frame, text=name.upper(), variable=iv,
+                    cb = Checkbutton(mod_frame, text=name.upper(), variable=iv,
                                      command=lambda tk=k, n=name, iv=iv: self._on_modifier_toggle(tk, n, iv))
-                    cb.grid(column=2 + ci, row=0, padx=2, sticky='w')
+                    cb.pack(side='left', padx=4)
                     mv[name] = iv
                 self._mod_vars[k] = mv
+                
             elif k == 'color_preview_spot':
-                # Color preview spot doesn't need any extra buttons (no modifiers, no preview)
+                # Color preview spot doesn't need any extra buttons
                 pass
+                
             else:
-                Button(settings_frame, text='Preview', command=lambda n=k : self._set_preview(n)).grid(column=2, columnspan=1, row=0, sticky='ew', padx=2, pady=5)
+                # Preview button with consistent sizing
+                Button(settings_frame, text='Preview',
+                       width=button_width,
+                       command=lambda n=k : self._set_preview(n)).grid(
+                    column=1, row=0, padx=button_padx, pady=button_pady, sticky='ew'
+                )
                 
                 # Add Manual Color Selection button for Palette
                 if k == 'Palette':
-                    Button(settings_frame, text='Edit Colors', command=lambda n=k, t=v : self._start_manual_color_selection(n, t)).grid(column=3, columnspan=1, row=0, sticky='ew', padx=2, pady=5)
+                    Button(settings_frame, text='Edit Colors',
+                           width=button_width,
+                           command=lambda n=k, t=v : self._start_manual_color_selection(n, t)).grid(
+                        column=2, row=0, padx=button_padx, pady=button_pady, sticky='ew'
+                    )
 
+            # Tool-specific settings in second row
             if k == 'Palette':
-                settings_frame.rowconfigure(1, weight=1, uniform='row')
-
-                Label(settings_frame, text='Rows').grid(column=0, row=1, padx=5, pady=5)
-                self._erows = Entry(settings_frame, width=5)
-                self._erows.grid(column=1, row=1, padx=5, pady=5)
-                Label(settings_frame, text='Columns').grid(column=2, row=1, padx=5, pady=5)
-                self._ecols = Entry(settings_frame, width=5)
-                self._ecols.grid(column=3, row=1, padx=5, pady=5)
+                # Palette dimension inputs with better organization
+                dim_frame = Frame(settings_frame)
+                dim_frame.grid(column=0, row=1, columnspan=4, sticky='w', padx=button_padx, pady=button_pady)
+                
+                Label(dim_frame, text='Rows:').pack(side='left', padx=(0, 4))
+                self._erows = Entry(dim_frame, width=6)
+                self._erows.pack(side='left', padx=(0, 12))
+                
+                Label(dim_frame, text='Columns:').pack(side='left', padx=(0, 4))
+                self._ecols = Entry(dim_frame, width=6)
+                self._ecols.pack(side='left', padx=(0, 4))
 
                 self._erows.insert(0, v['rows'])
                 self._ecols.insert(0, v['cols'])
@@ -153,11 +194,13 @@ class SetupWindow:
                 self._ecols.bind('<Return>', self._on_update_dimensions)
 
             elif k == 'Color Button':
-                settings_frame.rowconfigure(1, weight=1, uniform='row')
-
-                Label(settings_frame, text='Delay (s)').grid(column=0, row=1, padx=5, pady=5)
-                self._edelay = Entry(settings_frame, width=8)
-                self._edelay.grid(column=1, row=1, padx=5, pady=5)
+                # Color Button delay setting with better organization
+                delay_frame = Frame(settings_frame)
+                delay_frame.grid(column=0, row=1, columnspan=4, sticky='w', padx=button_padx, pady=button_pady)
+                
+                Label(delay_frame, text='Delay (s):').pack(side='left', padx=(0, 4))
+                self._edelay = Entry(delay_frame, width=8)
+                self._edelay.pack(side='left', padx=(0, 4))
 
                 delay_value = v.get('delay', 0.1)
                 self._edelay.insert(0, str(delay_value))
@@ -171,12 +214,40 @@ class SetupWindow:
                 self._edelay.bind('<FocusOut>', self._on_update_delay)
                 self._edelay.bind('<Return>', self._on_update_delay)
 
-            elif k == 'Color Button Okay':
-                settings_frame.rowconfigure(1, weight=1, uniform='row')
+            elif k == 'Canvas':
+                # Canvas calibration button with better organization
+                Button(settings_frame, text='Calibrate Canvas',
+                       width=button_width,
+                       command=lambda n=k, t=v : self._start_canvas_calibration(n, t)).grid(
+                    column=1, row=0, padx=button_padx, pady=button_pady, sticky='ew'
+                )
 
-                Label(settings_frame, text='Delay (s)').grid(column=0, row=1, padx=5, pady=5)
-                self._edelay_okay = Entry(settings_frame, width=8)
-                self._edelay_okay.grid(column=1, row=1, padx=5, pady=5)
+                # Show calibration status
+                calib_data = v.get('calibration')
+                if calib_data:
+                    calib_status = f"Scale: {calib_data.get('scale_factor', 1.0):.2f} ({calib_data.get('scale_factor', 1.0)*100:.0f}%)"
+                    calib_date = calib_data.get('calibration_date', 'Never')
+                    self._calib_status_label = Label(settings_frame,
+                        text=f"{calib_status}\nCalibrated: {calib_date}",
+                        font=('TkDefaultFont', 8),
+                        justify='left'
+                    )
+                else:
+                    self._calib_status_label = Label(settings_frame,
+                        text="No calibration",
+                        font=('TkDefaultFont', 8),
+                        justify='left'
+                    )
+                self._calib_status_label.grid(column=0, row=1, columnspan=4, padx=button_padx, pady=button_pady, sticky='w')
+
+            elif k == 'Color Button Okay':
+                # Color Button Okay delay setting with better organization
+                delay_frame = Frame(settings_frame)
+                delay_frame.grid(column=0, row=1, columnspan=4, sticky='w', padx=button_padx, pady=button_pady)
+                
+                Label(delay_frame, text='Delay (s):').pack(side='left', padx=(0, 4))
+                self._edelay_okay = Entry(delay_frame, width=8)
+                self._edelay_okay.pack(side='left', padx=(0, 4))
 
                 delay_value = v.get('delay', 0.1)
                 self._edelay_okay.insert(0, str(delay_value))
@@ -190,7 +261,7 @@ class SetupWindow:
                 self._edelay_okay.bind('<FocusOut>', lambda e, k=k: self._on_update_delay_okay(e, k))
                 self._edelay_okay.bind('<Return>', lambda e, k=k: self._on_update_delay_okay(e, k))
 
-            settings_frame.grid(column=2, row=idt, sticky='nsew')
+            settings_frame.grid(column=2, row=idt, sticky='nsew', padx=5, pady=2)
         return frame
 
     def _init_preview_panel(self):
@@ -290,8 +361,11 @@ class SetupWindow:
         
         # Configure grid layout
         self._color_sel_window.columnconfigure(0, weight=1)
-        self._color_sel_window.rowconfigure(0, weight=0)  # Instructions and mode
-        self._color_sel_window.rowconfigure(1, weight=1)  # Grid
+        self._color_sel_window.columnconfigure(1, weight=0)
+        self._color_sel_window.rowconfigure(0, weight=0)  # Instructions
+        self._color_sel_window.rowconfigure(1, weight=0)  # Mode buttons
+        self._color_sel_window.rowconfigure(2, weight=1)  # Grid
+        self._color_sel_window.rowconfigure(3, weight=0)  # Action buttons
         
         # Mode selection
         self._pick_centers_mode = False  # False = Toggle mode, True = Pick centers mode
@@ -319,16 +393,16 @@ class SetupWindow:
             wraplength=870,
             justify='left'
         )
-        instructions.grid(column=0, row=0, padx=10, pady=10, sticky='ew')
+        instructions.grid(column=0, row=0, padx=10, pady=(10, 5), sticky='ew')
         
-        # Mode buttons
+        # Mode buttons frame with consistent sizing
         mode_frame = Frame(self._color_sel_window)
-        mode_frame.grid(column=0, row=0, padx=10, pady=5, sticky='e')
+        mode_frame.grid(column=0, row=1, padx=10, pady=5, sticky='ew')
         
-        self._mode_btn_toggle = Button(mode_frame, text='Toggle Valid/Invalid', command=self._set_toggle_mode)
+        self._mode_btn_toggle = Button(mode_frame, text='Toggle Valid/Invalid', width=18, command=self._set_toggle_mode)
         self._mode_btn_toggle.pack(side='left', padx=5)
         
-        self._mode_btn_pick = Button(mode_frame, text='Pick Centers', command=self._set_pick_centers_mode)
+        self._mode_btn_pick = Button(mode_frame, text='Pick Centers', width=12, command=self._set_pick_centers_mode)
         self._mode_btn_pick.pack(side='left', padx=5)
         
         # Scrollable frame for grid - using Canvas-based approach like precision estimate
@@ -344,8 +418,8 @@ class SetupWindow:
         canvas.create_window((0, 0), window=scrollable_frame, anchor='nw')
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        canvas.grid(column=0, row=1, sticky='nsew', padx=10, pady=10)
-        scrollbar.grid(column=1, row=1, sticky='ns', pady=10)
+        canvas.grid(column=0, row=2, sticky='nsew', padx=10, pady=5)
+        scrollbar.grid(column=1, row=2, sticky='ns', pady=5)
         
         # Create grid cells using Canvas-based approach
         self._grid_buttons = {}
@@ -391,51 +465,30 @@ class SetupWindow:
         # Draw the grid with enable/disable indicators
         self._draw_grid_with_indicators()
         
-        # Done button
-        done_frame = Frame(self._color_sel_window)
-        done_frame.grid(column=0, row=2, padx=10, pady=10, sticky='ew')
+        # Action buttons frame with better organization and consistent sizing
+        action_frame = Frame(self._color_sel_window)
+        action_frame.grid(column=0, row=3, columnspan=2, padx=10, pady=10, sticky='ew')
         
-        Button(
-            done_frame,
-            text='Done',
-            command=self._on_color_selection_done
-        ).pack(side='left', padx=5)
+        # Group buttons logically
+        # Primary actions
+        Button(action_frame, text='Done', width=10, command=self._on_color_selection_done).pack(side='left', padx=3)
+        Button(action_frame, text='Cancel', width=10, command=lambda: self._color_sel_window.destroy()).pack(side='left', padx=3)
         
-        Button(
-            done_frame,
-            text='Auto-Estimate Centers',
-            command=self._auto_estimate_centers
-        ).pack(side='left', padx=5)
+        # Separator
+        from tkinter import ttk
+        ttk.Separator(action_frame, orient='vertical').pack(side='left', fill='y', padx=10)
         
-        Button(
-            done_frame,
-            text='Precision Estimate',
-            command=self._start_precision_estimate
-        ).pack(side='left', padx=5)
+        # Center estimation actions
+        Button(action_frame, text='Auto-Estimate', width=14, command=self._auto_estimate_centers).pack(side='left', padx=3)
+        Button(action_frame, text='Precision Estimate', width=16, command=self._start_precision_estimate).pack(side='left', padx=3)
+        Button(action_frame, text='Show Centers', width=12, command=self._show_custom_centers_overlay).pack(side='left', padx=3)
         
-        Button(
-            done_frame,
-            text='Show Custom Centers',
-            command=self._show_custom_centers_overlay
-        ).pack(side='left', padx=5)
+        # Separator
+        ttk.Separator(action_frame, orient='vertical').pack(side='left', fill='y', padx=10)
         
-        Button(
-            done_frame,
-            text='Select All',
-            command=self._select_all_colors
-        ).pack(side='left', padx=5)
-        
-        Button(
-            done_frame,
-            text='Deselect All',
-            command=self._deselect_all_colors
-        ).pack(side='left', padx=5)
-        
-        Button(
-            done_frame,
-            text='Cancel',
-            command=lambda: self._color_sel_window.destroy()
-        ).pack(side='left', padx=5)
+        # Selection actions
+        Button(action_frame, text='Select All', width=12, command=self._select_all_colors).pack(side='left', padx=3)
+        Button(action_frame, text='Deselect All', width=14, command=self._deselect_all_colors).pack(side='left', padx=3)
         
         # Bind ESC key to cancel picking on the parent window (works even when color window is minimized)
         self.parent.bind('<Escape>', lambda e: self._on_escape_press(e))
@@ -1131,6 +1184,94 @@ class SetupWindow:
         except Exception:
             pass
 
+    def _start_canvas_calibration(self, name, tool):
+        """Start canvas calibration process"""
+        if not tool.get('box'):
+            messagebox.showerror(self.title, 'Please initialize Canvas first (click Initialize button)!')
+            return
+        
+        # Check if canvas is initialized
+        try:
+            canvas_x, canvas_y, canvas_w, canvas_h = self.bot._canvas
+        except:
+            messagebox.showerror(self.title, 'Please initialize Canvas first (click Initialize button)!')
+            return
+        
+        # Show preparation dialog
+        result = messagebox.askokcancel(
+            'Canvas Calibration',
+            'A checkerboard pattern will be drawn on your canvas to detect zoom level.\n\n'
+            'The pattern will be drawn using your currently selected color.\n\n'
+            'Please prepare:\n'
+            '1. Open your drawing application\n'
+            '2. Select a color/brush tool\n'
+            '3. Have the canvas visible\n\n'
+            '4. Click OK when ready\n\n'
+            'The bot will wait 5 seconds after you click OK, giving you time to prepare.\n\n'
+            'Press ESC to cancel calibration at any time.'
+        )
+        
+        if not result:
+            return  # User cancelled
+        
+        # Wait 5 seconds for user to prepare
+        print("[CanvasCalibration] Waiting 5 seconds for user to prepare...")
+        self._root.update()
+        self._root.after(5000, lambda: self._run_canvas_calibration(name, tool, canvas_x, canvas_y, canvas_w, canvas_h))
+    
+    def _run_canvas_calibration(self, name, tool, canvas_x, canvas_y, canvas_w, canvas_h):
+        """Execute canvas calibration after preparation delay"""
+        # Restore windows
+        self._root.deiconify()
+        self.parent.wm_state('normal')
+        self._root.deiconify()
+        self._root.wm_state('normal')
+        
+        # Run calibration
+        calibration_results = self.bot.calibrate_canvas()
+        
+        # Restore windows after calibration
+        self._root.deiconify()
+        self.parent.wm_state('normal')
+        self._root.wm_state('normal')
+        self._root.deiconify()
+        self._root.wm_state('normal')
+        
+        if calibration_results is None:
+            messagebox.showerror(self.title, 'Canvas calibration failed!')
+            return
+        
+        # Show results dialog
+        scale_factor = calibration_results['scale_factor']
+        measured_w, measured_h = calibration_results['measured_size']
+        intended_w, intended_h = calibration_results['intended_size']
+        calib_date = calibration_results['calibration_date']
+        
+        result = messagebox.askokcancel(
+            'Canvas Calibration Results',
+            f'Intended size: {intended_w}x{intended_h} pixels\n'
+            f'Measured size: {measured_w}x{measured_h} pixels\n'
+            f'Scale factor: {scale_factor:.3f} ({scale_factor*100:.1f}%)\n'
+            f'Calibration date: {calib_date}\n\n'
+            f'This means your canvas is zoomed to {scale_factor*100:.1f}%.\n\n'
+            f'Future drawings will use this scale factor to adjust pixel size.\n\n'
+            f'For example, if pixel size = 2 and scale = 0.76:\n'
+            f'  Effective pixel size = 1.52\n'
+            f'  Would you like to save this calibration?\n'
+        )
+        
+        if result:  # User clicked OK
+            # Save calibration to config
+            self.tools['Canvas']['calibration'] = calibration_results
+            
+            # Update calibration status label
+            calib_status = f"Scale: {scale_factor:.2f}% (Calibrated: {calib_date})"
+            self._calib_status_label.config(text=calib_status)
+            
+            print(f"[CanvasCalibration] Calibration saved: scale_factor={scale_factor:.3f}")
+        else:  # User clicked Cancel
+            print("[CanvasCalibration] Calibration cancelled by user")
+    
     def close(self):
         self._root.destroy()
         self.on_complete()
@@ -1206,50 +1347,62 @@ class InteractivePaletteExtractor:
         for widget in self._control_frame.winfo_children():
             widget.destroy()
         
+        # Define consistent button width
+        button_width = 12
+        
         if self._phase == 1:  # Region selection
-            status_label = Label(self._control_frame, 
+            status_label = Label(self._control_frame,
                 text='Phase 1: Click upper-left and bottom-right corners of palette region')
             status_label.grid(column=0, row=0, pady=5)
         
         elif self._phase == 2:  # Grid configuration
-            # Grid dimension inputs
-            Label(self._control_frame, text='Rows:').grid(column=0, row=0, sticky='w', padx=5)
-            self._rows_entry = Entry(self._control_frame, width=5)
-            self._rows_entry.grid(column=1, row=0, padx=5)
+            # Grid dimension inputs frame for better organization
+            dim_frame = Frame(self._control_frame)
+            dim_frame.grid(column=0, row=0, sticky='w')
+            
+            Label(dim_frame, text='Rows:').pack(side='left', padx=(0, 4))
+            self._rows_entry = Entry(dim_frame, width=6)
+            self._rows_entry.pack(side='left', padx=(0, 12))
             if self._rows > 0:
                 self._rows_entry.insert(0, str(self._rows))
             
-            Label(self._control_frame, text='Cols:').grid(column=2, row=0, sticky='w', padx=5)
-            self._cols_entry = Entry(self._control_frame, width=5)
-            self._cols_entry.grid(column=3, row=0, padx=5)
+            Label(dim_frame, text='Cols:').pack(side='left', padx=(0, 4))
+            self._cols_entry = Entry(dim_frame, width=6)
+            self._cols_entry.pack(side='left', padx=(0, 12))
             if self._cols > 0:
                 self._cols_entry.insert(0, str(self._cols))
             
-            Button(self._control_frame, text='Set Grid', 
-                command=self._on_set_grid).grid(column=4, row=0, padx=5)
+            # Action buttons
+            Button(self._control_frame, text='Set Grid', width=button_width,
+                command=self._on_set_grid).grid(column=0, row=1, padx=5, pady=5, sticky='w')
             
-            Button(self._control_frame, text='Back to Region', 
-                command=self._back_to_phase_1).grid(column=5, row=0, padx=5)
+            Button(self._control_frame, text='Back', width=button_width,
+                command=self._back_to_phase_1).grid(column=1, row=1, padx=5, pady=5)
         
         elif self._phase == 3:  # Anchor placement
-            # Status and anchor count
+            # Status and anchor count frame
+            status_frame = Frame(self._control_frame)
+            status_frame.grid(column=0, row=0, sticky='w')
+            
             required_anchors = self._get_required_anchors()
             anchor_count = len(self._anchors)
             status_text = f'Anchors: {anchor_count}/{required_anchors} required'
-            status_label = Label(self._control_frame, text=status_text)
-            status_label.grid(column=0, row=0, pady=5)
+            status_label = Label(status_frame, text=status_text)
+            status_label.pack(side='left', padx=(0, 10))
             
-            Button(self._control_frame, text='Clear Anchors', 
-                command=self._clear_anchors).grid(column=1, row=0, padx=5)
+            # Action buttons
+            Button(status_frame, text='Clear Anchors', width=button_width,
+                command=self._clear_anchors).pack(side='left', padx=5)
             
-            Button(self._control_frame, text='Back to Grid', 
-                command=self._back_to_phase_2).grid(column=2, row=0, padx=5)
+            Button(status_frame, text='Back', width=button_width,
+                command=self._back_to_phase_2).pack(side='left', padx=5)
             
-            Button(self._control_frame, text='Extract Colors', 
-                command=self._on_extract_colors).grid(column=3, row=0, padx=5)
+            # Extract button in separate row
+            Button(self._control_frame, text='Extract Colors', width=button_width,
+                command=self._on_extract_colors).grid(column=0, row=1, padx=5, pady=5, sticky='w')
         
         elif self._phase == 4:  # Complete
-            Button(self._control_frame, text='Close', 
+            Button(self._control_frame, text='Close', width=button_width,
                 command=self._on_close).grid(column=0, row=0, pady=5)
     
     def _start_phase_1(self):

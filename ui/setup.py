@@ -1197,45 +1197,103 @@ class SetupWindow:
             messagebox.showerror(self.title, 'Please initialize Canvas first (click Initialize button)!')
             return
         
-        # Show preparation dialog
+        # Get user's brush size from paint application
+        from tkinter import simpledialog
+        brush_size_str = simpledialog.askinteger(
+            title=self.title,
+            prompt='Enter the brush size (in pixels) you have selected in your paint application:',
+            initialvalue=tool.get('user_brush_size', 10),
+            minvalue=1,
+            maxvalue=999
+        )
+        
+        if brush_size_str is None:
+            return  # User cancelled
+        
+        user_brush_size = int(brush_size_str)
+        
+        # Step 2: Show preparation dialog with instructions
         result = messagebox.askokcancel(
             'Canvas Calibration',
-            'A checkerboard pattern will be drawn on your canvas to detect zoom level.\n\n'
+            'A cross-pattern of dots will be drawn on your canvas to detect zoom level.\n\n'
             'The pattern will be drawn using your currently selected color.\n\n'
-            'Please prepare:\n'
-            '1. Open your drawing application\n'
-            '2. Select a color/brush tool\n'
-            '3. Have the canvas visible\n\n'
-            '4. Click OK when ready\n\n'
-            'The bot will wait 5 seconds after you click OK, giving you time to prepare.\n\n'
-            'Press ESC to cancel calibration at any time.'
+            'IMPORTANT: Before clicking OK:\n'
+            '1. CLEAR the canvas board to remove any clutter\n'
+            '2. Open your drawing application\n'
+            '3. Select a color and the brush/pencil tool\n'
+            f'4. Set brush size to {user_brush_size}px\n'
+            '5. Have the canvas visible\n\n'
+            '6. The main window and setup window will be minimized\n\n'
+            'Click OK when ready (you will have 5 seconds to prepare)\n\n'
+            'Press ESC to cancel calibration at any time.\n'
+            'The process will draw 9 dots in a cross pattern:\n'
+            '  XOOOX\n'
+            '  OXOXO\n'
+            '  OOXOO\n'
+            '  OXOXO\n'
+            '  XOOOX'
         )
         
         if not result:
             return  # User cancelled
         
-        # Wait 5 seconds for user to prepare
+        # Store brush size for results
+        self._calibration_brush_size = user_brush_size
+        
+        # Store calibration parameters for wrapper method
+        self._calibration_name = name
+        self._calibration_tool = tool
+        self._calibration_canvas = (canvas_x, canvas_y, canvas_w, canvas_h)
+        
+        # Wait 5 seconds for user to prepare (windows will minimize first)
+        print(f"[CanvasCalibration] User brush size: {user_brush_size}px")
         print("[CanvasCalibration] Waiting 5 seconds for user to prepare...")
-        self._root.update()
-        self._root.after(5000, lambda: self._run_canvas_calibration(name, tool, canvas_x, canvas_y, canvas_w, canvas_h))
+        
+        # Minimize setup window only (not main window - per requirements)
+        self._root.iconify()
+        
+        # Execute calibration after delay in a separate method to avoid closure issues
+        self._root.after(5000, self._execute_calibration_wrapper)
+    
+    def _execute_calibration_wrapper(self):
+        """Wrapper method to execute calibration with stored parameters"""
+        # Retrieve stored calibration parameters
+        name = self._calibration_name
+        tool = self._calibration_tool
+        canvas_x, canvas_y, canvas_w, canvas_h = self._calibration_canvas
+        
+        # Call the actual calibration method
+        self._run_canvas_calibration(name, tool, canvas_x, canvas_y, canvas_w, canvas_h)
     
     def _run_canvas_calibration(self, name, tool, canvas_x, canvas_y, canvas_w, canvas_h):
         """Execute canvas calibration after preparation delay"""
-        # Restore windows
-        self._root.deiconify()
-        self.parent.wm_state('normal')
-        self._root.deiconify()
-        self._root.wm_state('normal')
+        # Import calibration module
+        import sys
+        import os
+        parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
         
-        # Run calibration
-        calibration_results = self.bot.calibrate_canvas()
+        from canvas_calibration import run_calibration
         
-        # Restore windows after calibration
+        # DO NOT restore windows yet - calibration runs while minimized
+        # Windows will be restored after calibration completes
+        
+        # Get intended spacing from bot settings (pixel size)
+        intended_spacing = int(self.bot.settings[1])  # STEP setting
+        
+        # Run calibration using new module
+        calibration_results = run_calibration(
+            canvas_coords=(canvas_x, canvas_y, canvas_w, canvas_h),
+            intended_spacing=intended_spacing,
+            user_brush_size=getattr(self, '_calibration_brush_size', None)
+        )
+        
+        # Restore windows after calibration is complete
         self._root.deiconify()
-        self.parent.wm_state('normal')
         self._root.wm_state('normal')
-        self._root.deiconify()
-        self._root.wm_state('normal')
+        if hasattr(self, 'parent'):
+            self.parent.wm_state('normal')
         
         if calibration_results is None:
             messagebox.showerror(self.title, 'Canvas calibration failed!')
@@ -1243,32 +1301,49 @@ class SetupWindow:
         
         # Show results dialog
         scale_factor = calibration_results['scale_factor']
-        measured_w, measured_h = calibration_results['measured_size']
-        intended_w, intended_h = calibration_results['intended_size']
+        measured_spacing = calibration_results['measured_spacing']
+        intended_spacing_res = calibration_results['intended_spacing']
+        dot_size = calibration_results['dot_size']
+        user_brush_size = calibration_results['user_brush_size']
         calib_date = calibration_results['calibration_date']
+        
+        # Calculate effective pixel size example
+        effective_pixel_size = int(round(intended_spacing_res * scale_factor))
+        avg_dot_size_formatted = int((dot_size[0]+dot_size[1])/2)
+        
+        # Show detailed results to user
+        results_text = (
+            'Brush size you entered: ' + str(user_brush_size) + 'px\n' +
+            'Brush size we measured: ' + str(dot_size[0]) + 'x' + str(dot_size[1]) + 
+            ' (avg ' + str(avg_dot_size_formatted) + ')\n\n' +
+            'Intended dot spacing: ' + str(intended_spacing_res) + 'px\n' +
+            'Measured dot spacing: ' + f'{measured_spacing:.2f}' + 'px\n' +
+            'Scale factor: ' + f'{scale_factor:.4f}' + ' (' + f'{scale_factor*100:.1f}' + '%)\n' +
+            'Calibration date: ' + calib_date + '\n\n' +
+            'This means your canvas is at ' + f'{scale_factor*100:.1f}' + '% zoom level.\n\n' +
+            'Future drawings will adjust pixel size based on this calibration.\n\n' +
+            'For example, if pixel size = ' + str(intended_spacing_res) + 'px and scale = ' + 
+            f'{scale_factor:.2f}:\n' +
+            '  Effective pixel size = ' + str(effective_pixel_size) + 'px\n' +
+            '\nWould you like to save this calibration?'
+        )
         
         result = messagebox.askokcancel(
             'Canvas Calibration Results',
-            f'Intended size: {intended_w}x{intended_h} pixels\n'
-            f'Measured size: {measured_w}x{measured_h} pixels\n'
-            f'Scale factor: {scale_factor:.3f} ({scale_factor*100:.1f}%)\n'
-            f'Calibration date: {calib_date}\n\n'
-            f'This means your canvas is zoomed to {scale_factor*100:.1f}%.\n\n'
-            f'Future drawings will use this scale factor to adjust pixel size.\n\n'
-            f'For example, if pixel size = 2 and scale = 0.76:\n'
-            f'  Effective pixel size = 1.52\n'
-            f'  Would you like to save this calibration?\n'
+            results_text
         )
         
         if result:  # User clicked OK
             # Save calibration to config
             self.tools['Canvas']['calibration'] = calibration_results
+            self.tools['Canvas']['user_brush_size'] = user_brush_size
+            self.tools['Canvas']['brush_size'] = dot_size[0]
             
             # Update calibration status label
-            calib_status = f"Scale: {scale_factor:.2f}% (Calibrated: {calib_date})"
+            calib_status = f"Scale: {scale_factor:.2f}% (Brush: {dot_size[0]}px)"
             self._calib_status_label.config(text=calib_status)
             
-            print(f"[CanvasCalibration] Calibration saved: scale_factor={scale_factor:.3f}")
+            print(f"[CanvasCalibration] Calibration saved: scale_factor={scale_factor:.4f}")
         else:  # User clicked Cancel
             print("[CanvasCalibration] Calibration cancelled by user")
     

@@ -2102,99 +2102,43 @@ class Bot:
         
         print(f"[CanvasCalibration] Checkerboard pattern drawn")
     
-    def _measure_drawn_pattern(self, canvas_x, canvas_y, canvas_w, canvas_h):
-        '''
-        Capture a screenshot of the canvas and measure the actual size of the drawn pattern.
-        Uses edge detection to find the boundaries of the colored pattern.
-        
-        Parameters:
-            canvas_x, canvas_y, canvas_w, canvas_h: Canvas coordinates
-        
-        Returns:
-            Tuple (width, height) of the measured pattern, or None if measurement failed
-        '''
-        print(f"[CanvasCalibration] Capturing canvas screenshot...")
-        
-        # Capture screenshot of canvas area
-        try:
-            canvas_screenshot = ImageGrab.grab(bbox=(canvas_x, canvas_y, canvas_x + canvas_w, canvas_y + canvas_h))
-        except Exception as e:
-            print(f"[CanvasCalibration] ERROR: Failed to capture screenshot: {e}")
-            return None
-        
-        # Convert to RGB for pixel analysis
-        if canvas_screenshot.mode != 'RGB':
-            canvas_screenshot = canvas_screenshot.convert('RGB')
-        
-        # Load pixel data
-        pixels = canvas_screenshot.load()
-        img_w, img_h = canvas_screenshot.size
-        
-        print(f"[CanvasCalibration] Screenshot size: {img_w}x{img_h}")
-        
-        # Find pattern boundaries
-        min_x, min_y = img_w, img_h
-        max_x, max_y = 0, 0
-        
-        # Get a reference color from the center (should be part of the pattern)
-        center_x = img_w // 2
-        center_y = img_h // 2
-        try:
-            reference_color = pixels[center_x, center_y]
-        except (IndexError, TypeError):
-            # Fallback to first pixel
-            reference_color = pixels[0, 0]
-        
-        print(f"[CanvasCalibration] Reference color (center): {reference_color}")
-        
-        # Scan for pattern edges
-        # Find min and max coordinates where pixels match reference color
-        tolerance = 50  # Color tolerance for matching
-        
-        for y in range(img_h):
-            for x in range(img_w):
-                try:
-                    r, g, b = pixels[x, y]
-                    # Check if this pixel is part of the pattern (similar to reference color)
-                    color_diff = abs(r - reference_color[0]) + abs(g - reference_color[1]) + abs(b - reference_color[2])
-                    
-                    if color_diff <= tolerance:
-                        # Update boundaries
-                        min_x = min(min_x, x)
-                        min_y = min(min_y, y)
-                        max_x = max(max_x, x)
-                        max_y = max(max_y, y)
-                except (IndexError, TypeError):
-                    continue
-        
-        # Calculate measured size
-        measured_w = max_x - min_x + 1  # +1 because 0-indexed
-        measured_h = max_y - min_y + 1
-        
-        print(f"[CanvasCalibration] Pattern boundaries: ({min_x}, {min_y}) to ({max_x}, {max_y})")
-        print(f"[CanvasCalibration] Measured size: {measured_w}x{measured_h}")
-        
-        # Validate measurement (should be close to expected size)
-        if measured_w < 10 or measured_h < 10:
-            print(f"[CanvasCalibration] WARNING: Measured size seems too small, measurement may be incorrect")
-            return None
-        
-        return (measured_w, measured_h)
+
     
     def apply_canvas_calibration(self):
         '''
         Apply the canvas calibration scale factor to the current drawing settings.
         Returns the effective pixel size after applying calibration.
+        
+        LOGIC:
+        - Scale factor > 1 means canvas is ZOOMED OUT (pixels appear larger)
+        - Scale factor < 1 means canvas is ZOOMED IN (pixels appear smaller)
+        - We need to adjust pixel size in OPPOSITE direction:
+          * If scale > 1, decrease pixel size (divide)
+          * If scale < 1, increase pixel size (multiply >1)
+        - Example: measured=24px, intended=10px, scale=2.4
+          Canvas is zoomed to 240%, we need SMALLER effective pixels
         '''
         scale_factor = self.canvas_calibration.get('scale_factor', 1.0)
         
         # Apply to pixel size (step size)
         original_step = self.settings[Bot.STEP]
-        effective_step = int(round(original_step * scale_factor))
+        
+        # Calculate effective step based on scale direction
+        if scale_factor > 1.0:
+            # Canvas is zoomed out - use smaller pixel size
+            effective_step = int(round(original_step / scale_factor))
+            effective_step = max(1, effective_step)  # Minimum 1
+        elif scale_factor < 1.0:
+            # Canvas is zoomed in - use larger pixel size
+            effective_step = int(round(original_step / scale_factor))
+            effective_step = max(1, effective_step)  # Minimum 1
+        else:
+            # Scale factor is 1.0 (no calibration or perfect match)
+            effective_step = original_step
         
         print(f"[CanvasCalibration] Applying calibration:")
         print(f"[CanvasCalibration] Original pixel size: {original_step}")
-        print(f"[CanvasCalibration] Scale factor: {scale_factor:.3f}")
+        print(f"[CanvasCalibration] Scale factor: {scale_factor:.4f}")
         print(f"[CanvasCalibration] Effective pixel size: {effective_step}")
         
         return effective_step

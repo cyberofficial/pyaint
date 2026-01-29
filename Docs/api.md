@@ -59,7 +59,7 @@ Drawing settings are stored as a list accessible via the `settings` property:
 
 **Note:** `jump_threshold` is a separate attribute (not in settings list).
 
-Access via property: `bot.settings[Bot.DELAY]`, `bot.settings[Bot.STEP]`, etc.
+Access via: `bot.settings[Bot.DELAY]`, `bot.settings[Bot.STEP]`, etc.
 
 #### State Tracking Attributes
 
@@ -71,6 +71,8 @@ Access via property: `bot.settings[Bot.DELAY]`, `bot.settings[Bot.STEP]`, etc.
 | `color_button_okay` | dict | Color button okay configuration with keys: status, coords, enabled, delay, modifiers |
 | `mspaint_mode` | dict | MSPaint mode configuration with keys: enabled, delay |
 | `color_calibration_map` | dict or None | RGB to (x, y) coordinate mapping |
+| `canvas_calibration` | dict | Canvas calibration data with keys: scale_factor, measured_size, intended_size, calibration_date |
+| `estimated_time_seconds` | float | Estimated drawing time in seconds |
 
 #### Internal Tool References
 
@@ -82,9 +84,39 @@ Access via property: `bot.settings[Bot.DELAY]`, `bot.settings[Bot.STEP]`, etc.
 | `_spectrum_map` | dict or None | Spectrum color-to-position map |
 | `_overlay_window` | tk.Toplevel or None | Overlay window reference |
 | `_overlay_label` | tk.Label or None | Overlay label reference |
-| `_calibration_grid_box` | tuple or dict | Grid box coordinates for calibration |
-| `_calibration_preview_point` | tuple or dict | Preview point coordinates for calibration |
+| `canvas_calibration` | dict | Canvas calibration data with keys: scale_factor, measured_size, intended_size, calibration_date |
+| `estimated_time_seconds` | float | Estimated drawing time in seconds |
+| `_calibration_grid_box` | tuple or dict | Grid box coordinates for calibration (in calibrate_custom_colors) |
+| `_calibration_preview_point` | tuple or dict | Preview point coordinates for calibration (in calibrate_custom_colors) |
 | `_calibration_progress` | dict | Calibration progress tracking with keys: total, current |
+
+**Spectrum Map Methods (Private)**
+##### `_scan_spectrum(ccbox)`
+
+Scan the custom colors spectrum to create a color-to-position map.
+
+**Parameters:**
+- `ccbox` (tuple): Custom colors box as (x1, y1, x2, y2)
+
+**Returns:** Dictionary mapping RGB colors to screen (x, y) coordinates
+
+**Behavior:**
+- Samples spectrum at regular intervals
+- Builds color-to-position map for spectrum scanning
+- Stores screen coordinates for each color
+
+##### `_find_nearest_spectrum_color(target_color)`
+
+Find the nearest color in the spectrum map to a target color.
+
+**Parameters:**
+- `target_color` (tuple): Target RGB color (r, g, b)
+
+**Returns:** Screen coordinates (x, y) or None if no spectrum map
+
+**Behavior:**
+- Uses squared Euclidean distance for performance
+- Returns nearest color from spectrum map
 
 #### Drawing Options (Bitmask Flags)
 
@@ -100,7 +132,7 @@ Access via property: `bot.settings[Bot.DELAY]`, `bot.settings[Bot.STEP]`, etc.
 | `SLOTTED` | 'slotted' | Simple color-to-lines mapping |
 | `LAYERED` | 'layered' | Advanced color layering with frequency sorting (default) |
 
-### Methods
+**Methods**
 
 #### Initialization Methods
 
@@ -325,10 +357,18 @@ Runs color calibration by scanning the custom color spectrum.
 
 **Parameters:**
 - `grid_box` (tuple or dict): Grid box as [x1, y1, x2, y2] or dict with x, y, width, height
+
+**Note:** When passed as dict, expects keys: 'x', 'y', 'width', 'height'
+
 - `preview_point` (tuple or dict): Preview point as [x, y] or dict with x, y
+
+**Note:** When passed as dict, expects keys: 'x', 'y'
+
 - `step` (int, optional): Pixel step size for scanning (default: 2)
 
 **Returns:** Dictionary mapping RGB tuples to (x, y) coordinates
+
+**Behavior:**
 
 **Behavior:**
 - Presses mouse down at spectrum start
@@ -449,15 +489,18 @@ Calibrate canvas by drawing a checkerboard pattern and measuring dot spacing.
 
 ##### `apply_canvas_calibration()`
 
-Apply canvas calibration results to adjust pixel size.
+Apply canvas calibration results from previously saved calibration file to adjust pixel size.
+
+**Note:** This method is different from `run_calibration()` in canvas_calibration.py. The `run_calibration()` function performs actual calibration by drawing patterns and measuring them. This method only applies existing calibration data to settings by adjusting the pixel size (step) based on the measured scale factor.
 
 **Parameters:** None
 
 **Returns:** None
 
 **Behavior:**
-- Uses measured spacing to calculate adjusted pixel size
-- Updates Bot settings with new pixel size
+- Loads calibration data from `canvas_calibration` attribute
+- Applies scale factor to pixel size (step) setting
+- Prints calibration details
 
 ##### `save_canvas_calibration(filepath='canvas_calibration.json')`
 

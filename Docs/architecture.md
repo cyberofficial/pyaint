@@ -51,10 +51,13 @@ pyaint/
 ├── bot.py               # Core drawing automation engine
 ├── utils.py             # Utility functions
 ├── exceptions.py        # Custom exception classes
+├── canvas_calibration.py # Canvas calibration system
+├── palette_generator.py # Advanced color analysis and palette generation
 ├── ui/
 │   ├── __init__.py
 │   ├── window.py        # Main application window
-│   └── setup.py         # Setup/configuration window
+│   ├── setup.py         # Setup/configuration window
+│   └── palette_window.py # Palette extraction interface
 ├── assets/              # Preview images and assets
 ├── cache/               # Pre-computed image cache
 ├── config.json          # Persistent configuration
@@ -100,7 +103,6 @@ pyaint/
 - `Palette`: Palette color management
 
 **Key Constants**:
-- `Bot.DELAY`, `Bot.STEP`, `Bot.ACCURACY`, `Bot.JUMP_DELAY`: Settings indices
 - `Bot.SLOTTED`, `Bot.LAYERED`: Drawing mode constants
 - `Bot.IGNORE_WHITE`, `Bot.USE_CUSTOM_COLORS`: Option flags
 
@@ -120,7 +122,6 @@ pyaint/
 - `load_cached(cache_file)`: Load cached computation
 - `get_cache_filename(image_path, flags=0, mode=LAYERED)`: Generate cache filename
 - `estimate_drawing_time(cmap)`: Calculate drawing time estimate
-- `_estimate_drawing_time_seconds(cmap)`: Internal helper for time calculation
 
 #### `utils.py`
 
@@ -148,6 +149,40 @@ pyaint/
 - `NoCanvasError`: Canvas not initialized (subclass of NoToolError)
 - `NoCustomColorsError`: Custom colors not initialized (subclass of NoToolError)
 
+#### `canvas_calibration.py`
+
+**Purpose**: Advanced canvas calibration system with cross-pattern detection
+
+**Responsibilities**:
+- Cross-pattern drawing for zoom detection
+- Image-based measurement of drawn patterns
+- Scale factor calculation and validation
+- Brush size measurement and verification
+- Calibration result persistence
+
+**Key Functions**:
+- `run_calibration(canvas_coords, intended_spacing, user_brush_size)`: Execute calibration process
+
+#### `palette_generator.py`
+
+**Purpose**: Sophisticated color analysis and palette generation system
+
+**Responsibilities**:
+- Multi-threaded image processing for large images
+- HSV color space conversion and hue-based grouping
+- K-Means clustering with K-Means++ initialization
+- Weighted color sampling based on frequency
+- Multi-algorithm palette generation
+- Progress callbacks for long-running operations
+
+**Key Classes**:
+- `ColorPaletteGenerator`: Main palette generation class
+
+**Key Methods**:
+- `analyze_image()`: Analyze image and count color frequencies
+- `get_palette(num_colors, algorithm)`: Generate palette using specified algorithm
+- `export_gimp_css(colors, output_path)`: Export colors as GIMP-compatible CSS
+
 #### `ui/window.py`
 
 **Purpose**: Main application UI
@@ -169,24 +204,14 @@ pyaint/
 - `__init__(title, bot, w, h, x, y)`: Initialize and run main application
 - `setup()`: Open setup configuration dialog
 - `start_precompute_thread()`: Start pre-computation in background thread
-- `precompute()`: Execute pre-computation
 - `start_test_draw_thread()`: Start test draw in background thread
-- `test_draw()`: Execute test draw
 - `start_simple_test_draw_thread()`: Start simple test draw in background thread
-- `simple_test_draw()`: Execute simple test draw
 - `start_calibration_thread()`: Start calibration in background thread
-- `_calibration_thread()`: Execute calibration
-- `_redraw_draw_thread()`: Start redraw in background thread
-- `redraw_region()`: Execute region redraw
-- `_on_redraw_pick()`: Enter region picking mode
-- `start()`: Start full drawing operation
-- `_on_delete_calibration()`: Remove color calibration file
-- `_on_reset_config()`: Reset configuration to defaults
-- `_set_img(image=None, path=None)`: Load and display image
-- `update_preview()`: Update image preview (via `_set_img`)
-- `save_config()`: Save current configuration (via `tools` dict)
-- `load_config()`: Load configuration from file
 - `start_draw_thread()`: Start drawing in background thread
+- `_on_redraw_pick()`: Enter region picking mode
+- `redraw_region()`: Execute region redraw
+- `_set_img(image=None, path=None)`: Load and display image
+- `load_config()`: Load configuration from file
 - `_on_check(index, option)`: Handle drawing option checkbox toggle
 - `_on_newlayer_toggle()`: Handle new layer checkbox toggle
 - `_on_colorbutton_toggle()`: Handle color button checkbox toggle
@@ -197,18 +222,6 @@ pyaint/
 - `_on_jump_threshold_change(event=None)`: Handle jump threshold changes
 - `_on_calib_step_change(event=None)`: Handle calibration step changes
 - `_on_pause_key_entry_press(event)`: Handle pause key changes
-- `_draw_thread`: Drawing thread (method target)
-- `_test_draw_thread`: Test draw thread (Thread object)
-- `_simple_test_thread_obj`: Simple test thread (Thread object)
-- `_precompute_thread_obj`: Pre-compute thread (Thread object)
-- `_calibration_thread_obj`: Calibration thread (Thread object)
-- `_redraw_thread`: Redraw region thread (Thread object)
-- `_manage_draw_thread()`: Monitor draw thread progress
-- `_manage_test_draw_thread()`: Monitor test draw thread progress
-- `_manage_simple_test_draw_thread()`: Monitor simple test thread progress
-- `_manage_precompute_thread()`: Monitor pre-compute thread progress
-- `_manage_calibration_thread()`: Monitor calibration thread progress
-- `_manage_redraw_thread()`: Monitor redraw thread progress
 
 **Key Features**:
 - Control panel for settings
@@ -220,7 +233,7 @@ pyaint/
 - File management buttons
 - MSPaint Mode support
 - Color Button Okay support
-- Color calibration overlay positioning above custom colors box
+- Color calibration overlay positioning
 
 #### `ui/setup.py`
 
@@ -228,7 +241,7 @@ pyaint/
 
 **Responsibilities**:
 - Configure palette, canvas, custom colors
-- Configure optional tools (New Layer, Color Button, Color Button Okay, MSPaint Mode)
+- Configure optional tools (New Layer, Color Button, Color Button Okay)
 - Capture screen regions
 - Manage tool state
 - Interactive palette extraction with anchor points
@@ -243,71 +256,43 @@ pyaint/
 - `_start_manual_color_selection(name, tool)`: Start manual color selection for palette
 - `_set_preview(name)`: Show tool preview image
 - `_on_click(x, y, _, pressed)`: Handle mouse clicks for region capture
-- `_validate_dimensions(value)`: Validate rows/cols input
-- `_on_invalid_dimensions()`: Handle invalid dimensions input
-- `_on_update_dimensions(event)`: Update dimensions on focus out/return
-- `_validate_delay(value)`: Validate delay input (0.01-5.0)
-- `_on_invalid_delay()`: Handle invalid delay input
-- `_on_update_delay(event)`: Update Color Button delay
-- `_on_update_delay_okay(event, tool_name)`: Update Color Button Okay delay
-- `_on_enable_toggle(tool_name, intvar)`: Handle enable toggle for tools
-- `_on_modifier_toggle(tool_name, modifier_name, intvar)`: Handle modifier key toggles
 - `close()`: Close setup window and call completion callback
-- `_open_color_selection_window()`: Open manual color selection UI
-- `_draw_grid_with_indicators()`: Draw palette grid with valid/invalid indicators
-- `_on_grid_canvas_click(event)`: Handle click on grid to toggle valid/invalid
-- `_toggle_grid_cell(index)`: Toggle grid cell validity
-- `_select_all_colors()`: Mark all colors as valid
-- `_deselect_all_colors()`: Deselect all colors
-- `_set_toggle_mode()`: Set mode to toggle valid/invalid cells
-- `_set_pick_centers_mode()`: Set mode to pick exact center points
-- `_pick_center(index)`: Pick center point for specific color cell
-- `_auto_estimate_centers()`: Auto-estimate all color centers
-- `_show_centers_overlay()`: Show overlay of estimated centers
-- `_show_custom_centers_overlay()`: Show overlay of custom centers
-- `_start_precision_estimate()`: Start interactive palette extraction
-- `_on_extraction_complete(manual_centers)`: Handle palette extraction completion
-- `_on_color_selection_done()`: Save manual color selection results
-- `_on_center_pick_click(x, y, _, pressed)`: Handle click for center picking
-- `_on_key_press(key)`: Handle keyboard events (ESC)
-- `_on_escape_press(event)`: Handle ESC to cancel picking
 
 **InteractivePaletteExtractor Key Methods**:
 - `__init__(parent, bot, current_tool, tool_name, valid_positions, palette_box, on_complete)`: Initialize extractor
-- `_setup_ui()`: Setup main UI layout
-- `_update_controls()`: Update control buttons based on current phase
 - `_start_phase_1()`: Start phase 1: Region selection
 - `_on_region_click(x, y, button, pressed)`: Handle region selection in phase 1
 - `_capture_palette()`: Capture palette image from selected region
 - `_start_phase_2()`: Start phase 2: Grid configuration
 - `_on_set_grid()`: Handle grid dimension input
 - `_start_phase_3()`: Start phase 3: Anchor placement
-- `_draw_palette_with_grid()`: Draw palette with grid overlay
-- `_on_canvas_click(event)`: Handle click for anchor placement
-- `_get_required_anchors()`: Get minimum number of required anchors based on grid
-- `_get_corner_indices()`: Get indices of corner positions based on grid
-- `_recalculate_interpolation()`: Recalculate interpolated positions from anchors
-- `_clear_anchors()`: Clear all anchor points
-- `_back_to_phase_2()`: Go back to grid configuration
-- `_back_to_phase_1()`: Go back to region selection
 - `_on_extract_colors()`: Extract colors and complete extraction
-- `_save_temp()`: Save current state to temp file
-- `_try_restore()`: Try to restore state from temp file
-- `_on_close()`: Handle window close
 
 **Key Features**:
 - Manual color selection with valid/invalid toggling
 - Precision estimate for automatic center calculation via InteractivePaletteExtractor
 - Pick centers mode for manual center placement
 - Auto-estimate centers with overlay visualization
-- Custom centers overlay display
-- Modifier key support (ctrl, alt, shift)
 - Three-phase interactive palette extraction:
   - Phase 1: Select palette region
   - Phase 2: Configure grid (rows, cols)
   - Phase 3: Place anchor points for interpolation
 - Anchor point interpolation for accurate center estimation
-- State persistence to temp file for session restoration
+
+#### `ui/palette_window.py`
+
+**Purpose**: Color palette extraction and management interface
+
+**Key Classes**:
+- `PaletteWindow`: Palette extraction interface
+
+**Key Features**:
+- Multiple extraction algorithms (frequency, dominant shades, rare shades, K-Means)
+- Real-time image analysis and color counting
+- Configurable palette size and algorithm selection
+- Color preview and selection with percentage display
+- Multi-threaded K-Means clustering with progress tracking
+- Export functionality for GIMP-compatible CSS palettes
 
 ---
 
@@ -337,13 +322,12 @@ main.py
               │     ├─> ignore_white_pixels
               │     └─> use_custom_colors
               ├─> Parse tool configurations
-              │     ├─> Palette (with manual_centers)
+              │     ├─> Palette
               │     ├─> Canvas
               │     ├─> Custom Colors
               │     ├─> New Layer
               │     ├─> Color Button
               │     ├─> Color Button Okay
-              │     ├─> MSPaint Mode
               │     └─> color_preview_spot
               ├─> Parse pause_key
               ├─> Parse skip_first_color
@@ -378,9 +362,7 @@ User Action (Click "Start")
   │     ├─> For each color in color map:
   │     │     ├─> Check skip_first_color (skip if enabled and first color)
   │     │     ├─> Click New Layer button (if enabled)
-  │     │     │     └─> Press modifiers (ctrl/alt/shift)
   │     │     ├─> Click Color Button (if enabled)
-  │     │     │     └─> Press modifiers (ctrl/alt/shift)
   │     │     ├─> Select color:
   │     │     │     ├─> Check Color Button Okay
   │     │     │     │     ├─> Enabled: Select in spectrum only
@@ -391,7 +373,6 @@ User Action (Click "Start")
   │     │     │     ├─> MSPaint Mode: Double-click
   │     │     │     └─> Normal Mode: Single-click
   │     │     ├─> Click Color Button Okay (if enabled)
-  │     │     │     └─> Press modifiers (ctrl/alt/shift)
   │     │     └─> For each line segment:
   │     │           ├─> Check terminate flag (ESC pressed)
   │     │           │     └─> If set: Stop drawing
@@ -407,60 +388,6 @@ User Action (Click "Start")
   │     └─> Close progress overlay
   │
   └─> Show results (time comparison)
-```
-
-### Region Redraw Flow
-
-```
-User Action (Click "Pick Region")
-  │
-  ├─> Enter picking mode
-  │
-  ├─> Wait for two mouse clicks
-  │     ├─> First click: Upper-left corner
-  │     └─> Second click: Lower-right corner
-  │
-  ├─> Store region coordinates
-  │
-  └─> Display region info
-
-User Action (Click "Draw Region")
-  │
-  ├─> Convert canvas region to image region
-  │
-  ├─> Process only selected region
-  │
-  ├─> Draw at target canvas location
-  │
-  └─> Show results
-```
-
-### Calibration Flow
-
-```
-User Action (Click "Run Calibration")
-  │
-  ├─> Validate prerequisites
-  │     ├─> Custom Colors configured?
-  │     └─> Color Preview Spot configured?
-  │
-  ├─> Create calibration progress overlay (positioned above custom colors box)
-  │
-  ├─> Minimize main window
-  │
-  ├─> Execute calibration (in thread)
-  │     ├─> Press mouse down at spectrum start
-  │     ├─> For each position in spectrum:
-  │     │     ├─> Move to position
-  │     │     ├─> Capture RGB from preview spot
-  │     │     ├─> Store mapping: RGB → (x, y)
-  │     │     ├─> Update progress overlay
-  │     │     ├─> Check termination (ESC)
-  │     │     └─> Calculate ETA
-  │     ├─> Release mouse up
-  │     └─> Save to color_calibration.json
-  │
-  └─> Restore main window
 ```
 
 ---
@@ -552,28 +479,6 @@ For each color in sorted order:
         └─> Update ETA calculation
 ```
 
-### Pause/Resume Mechanism
-
-**Pause State**:
-- `bot.paused` flag set to True
-- Drawing loop checks flag at each iteration
-- State preserved (current position, color, line index)
-- Can pause between colors or between lines
-- Modifier keys released during pause
-
-**Resume State**:
-- `bot.paused` flag set to False
-- Replays current stroke to ensure clean result
-- Continues from exact interruption point
-- No re-initialization needed
-
-**Draw State Tracking**:
-- `color_idx`: Current color index
-- `line_idx`: Current line index within color
-- `segment_idx`: Current segment within line (for mid-stroke pause)
-- `current_color`: Currently selected color
-- `was_paused`: Flag to trigger stroke replay
-
 ---
 
 ## Color System
@@ -589,7 +494,6 @@ For each color in sorted order:
 - Clickable color cells
 - Valid/invalid positions (can exclude colors)
 - Manual center points (override automatic calculation)
-- Manual color selection UI with canvas-based grid display
 
 **Selection Process**:
 1. Check if color is in valid positions
@@ -605,9 +509,6 @@ For each color in sorted order:
 - Toggle valid/invalid cells via canvas grid
 - Pick centers mode for manual center placement
 - Auto-estimate centers with overlay visualization
-- Precision estimate via InteractivePaletteExtractor
-- Select all / Deselect all buttons
-- Show custom centers overlay
 - Canvas-based grid display with palette image background
 - Color indicator dots (green=valid, red=invalid)
 
@@ -630,7 +531,6 @@ For each color in sorted order:
 3. Click on spectrum position
 4. MSPaint Mode: Double-click with delay
 5. Normal Mode: Single-click
-6. Fallback to keyboard input (tab + RGB values)
 
 ### Color Matching Algorithm
 
@@ -710,12 +610,6 @@ return (int(weighted_x), int(weighted_y))
 5. Save to `color_calibration.json`
 6. Load automatically during drawing
 
-**Usage During Drawing**:
-1. Check calibration map for exact match (tolerance=20)
-2. If found: Use calibrated position
-3. If not found: Use k-nearest neighbors with interpolation
-4. Update progress overlay during calibration
-
 ---
 
 ## Progress Overlay System
@@ -737,48 +631,6 @@ Real-time progress display during long operations (drawing, calibration).
 **Content**:
 - Stroke count: "X/Y Strokes"
 - ETA: "(ETA: Xs/Xm/Xh)"
-
-### Implementation
-
-**Create Overlay**:
-```python
-def create_progress_overlay():
-    window = Toplevel()
-    window.overrideredirect(True)  # Frameless
-    window.attributes("-topmost", True)  # Always on top
-    window.geometry(f"{width}x{height}+{x}+{y}")
-    
-    # Create label with progress text
-    label = Label(window, text="Initializing...", 
-                  bg="#2c2c2c", fg="#00ff00")
-    label.pack()
-    
-    return window, label
-```
-
-**Update Progress**:
-```python
-def update_progress_overlay(completed, total, eta_seconds):
-    progress_text = f"{completed}/{total} Strokes (ETA: {format_time(eta_seconds)})"
-    label.config(text=progress_text)
-    window.update()
-```
-
-**Close Overlay**:
-```python
-def close_progress_overlay():
-    if window:
-        window.destroy()
-        window = None
-        label = None
-```
-
-### Usage Scenarios
-
-1. **Full Drawing**: Shows stroke progress and ETA
-2. **Test Draw**: Shows test line progress
-3. **Calibration**: Shows calibration progress with colors mapped (overlay above custom colors box)
-4. **Region Redraw**: Shows region progress
 
 ---
 
@@ -803,67 +655,12 @@ The calibration system provides precise RGB-to-position mapping for custom color
 - **Location**: Single pixel coordinate where selected color appears
 - **Usage**: During calibration, capture RGB at this point for each spectrum position
 
-#### Spectrum Scanning
+#### Canvas Calibration
 
-- **Purpose**: Scan custom color spectrum to create initial mapping
-- **Implementation**: Sample spectrum at regular intervals
-- **Fallback**: Used when calibration map doesn't contain exact match
-
-### Calibration Process
-
-```
-1. Initialize calibration
-   ├─> Reset terminate flag
-   ├─> Clear previous calibration map
-   └─> Store grid parameters
-
-2. Extract grid coordinates
-   ├─> Get custom colors box
-   ├─> Get preview point coordinates
-   └─> Calculate grid dimensions
-
-3. Execute scanning
-   ├─> Press mouse down at spectrum start
-   ├─> For each position (x, y):
-   │     ├─> Move mouse to (x, y)
-   │     ├─> Wait for UI update
-   │     ├─> Capture 1x1 pixel at preview point
-   │     ├─> Extract RGB value
-   │     ├─> Store in map: RGB → (x, y)
-   │     ├─> Update progress overlay (positioned above custom colors box)
-   │     ├─> Calculate ETA
-   │     └─> Check for termination (ESC)
-   ├─> Release mouse up
-   └─> Show completion message
-
-4. Save calibration
-   ├─> Convert tuple keys to strings for JSON
-   ├─> Save to color_calibration.json
-   └─> Print summary
-
-5. Load for drawing
-   ├─> Check if file exists
-   ├─> Load JSON into memory
-   ├─> Convert string keys back to tuples
-   └─> Use for color position lookup
-```
-
-### Color Lookup During Drawing
-
-```
-1. Need to select color (r, g, b)
-2. Check calibration map exists?
-   ├─> No: Fall back to spectrum scanning
-   └─> Yes: Try exact match
-       ├─> Find exact match within tolerance (Manhattan distance ≤ 20)
-       ├─> Found? Use calibrated position
-       └─> Not found? Use k-nearest neighbors
-             ├─> Find 4 nearest colors by Euclidean distance
-             ├─> Calculate inverse distance weights
-             ├─> Compute weighted position
-             └─> Use interpolated position
-3. Click on spectrum at calculated position
-```
+- **Purpose**: Detect canvas zoom level for accurate coordinate mapping
+- **Process**: Draw cross-pattern, measure with image analysis, calculate scale factor
+- **Storage**: Saved in canvas tool configuration
+- **Usage**: Applied during coordinate transformation
 
 ---
 
@@ -875,66 +672,13 @@ Run long operations (processing, drawing, calibration) in background threads to 
 
 ### Thread Types
 
-1. **Draw Thread** (`_draw_thread`):
-   - Runs full drawing operation
-   - Updates progress overlay
-   - Handles terminate/pause flags
-   - Returns result on completion
-
-2. **Test Draw Thread** (`_test_draw_thread_obj`):
-   - Runs test draw operation
-   - Limited to max_lines (default: 20)
-   - Updates UI progress
-
-3. **Simple Test Draw Thread** (`_simple_test_thread_obj`):
-   - Runs simple line test
-   - No color selection
-   - Quick brush size verification
-
-4. **Pre-compute Thread** (`_precompute_thread_obj`):
-   - Processes image for caching
-   - Saves to disk
-   - Shows progress percentage
-
-5. **Calibration Thread** (`_calibration_thread_obj`):
-   - Runs color calibration
-   - Shows progress overlay (positioned above custom colors box)
-   - Supports cancellation (ESC)
-
-6. **Redraw Region Thread** (`_redraw_thread`):
-   - Runs region-based drawing
-   - Shows progress overlay
-   - Handles terminate/pause flags
-
-7. **Keyboard Listener Thread** (`pynput_listener`):
-   - Global keyboard monitoring
-   - Handles ESC (terminate)
-   - Handles pause_key (pause/resume)
-   - Non-blocking operation
-
-### Thread Management
-
-**Starting a Thread**:
-```python
-def start_draw_thread():
-    self._draw_thread = Thread(target=self.start)
-    self._draw_thread.start()
-    self._manage_draw_thread()  # Monitor progress
-```
-
-**Thread Monitor**:
-```python
-def _manage_draw_thread():
-    if self._draw_thread.is_alive() and self.busy:
-        self._root.after(500, self._manage_draw_thread)
-        self.tlabel['text'] = f"Processing image: {self.bot.progress:.2f}%"
-```
-
-**Thread Safety**:
-- Bot state modified with flags (`terminate`, `paused`, `drawing`)
-- Progress updated via UI thread-safe methods
-- Modifier keys handled carefully during pause/resume
-- Resource cleanup on thread termination
+1. **Draw Thread**: Runs full drawing operation
+2. **Test Draw Thread**: Runs test draw operation
+3. **Simple Test Draw Thread**: Runs simple line test
+4. **Pre-compute Thread**: Processes image for caching
+5. **Calibration Thread**: Runs color calibration
+6. **Redraw Region Thread**: Runs region-based drawing
+7. **Keyboard Listener Thread**: Global keyboard monitoring
 
 ---
 
@@ -953,25 +697,6 @@ def _manage_draw_thread():
 6. Tool configurations (Palette, Canvas, Custom Colors, etc.)
 7. Tool options (New Layer, Color Button, Color Button Okay, MSPaint Mode, etc.)
 8. `color_preview_spot`: Color preview spot for calibration
-9. `last_image_url`: Recently used image URL
-
-### Configuration Lifecycle
-
-```
-Application Start
-  │
-  ├─> Load config.json
-  │     ├─> Exists: Parse and apply
-  │     └─> Missing: Use defaults
-  │
-  ├─> User makes changes
-  │     ├─> Drawing settings changed
-  │     ├─> Checkboxes toggled
-  │     └─> Tools configured
-  │
-  └─> Save to config.json
-        (Automatic on each change)
-```
 
 ### Tool Configuration
 
@@ -990,47 +715,6 @@ Each tool has a configuration structure:
     },
     "delay": float,            # Delay after click (seconds)
     "preview": string          # Preview image path
-}
-```
-
-**Special Tool Configurations**:
-
-**Palette**:
-```python
-{
-    "status": bool,
-    "box": [x1, y1, x2, y2],
-    "rows": int,              # Number of rows
-    "cols": int,              # Number of columns
-    "color_coords": {         # RGB to position mapping
-        "(r,g,b)": [x, y]
-    },
-    "valid_positions": [      # Valid cell indices
-        0, 1, 2, ...
-    ],
-    "manual_centers": {       # Manual center overrides
-        "0": [x, y]
-    },
-    "preview": string
-}
-```
-
-**Color Preview Spot**:
-```python
-{
-    "name": "Color Preview Spot",
-    "status": bool,
-    "coords": [x, y],
-    "enabled": bool,
-    "modifiers": {ctrl, alt, shift}
-}
-```
-
-**MSPaint Mode**:
-```python
-{
-    "enabled": bool,
-    "delay": float              # Delay between double-clicks (seconds)
 }
 ```
 
@@ -1061,7 +745,7 @@ Each tool has a configuration structure:
 
 **Drawing Settings**:
 - Delay (text entry, 0.01-10.0s)
-- Pixel Size (slider, 3-50)
+- Pixel Size (slider, 1-50)
 - Precision (slider, 0.0-1.0)
 - Jump Delay (slider, 0.0-2.0s)
 - Jump Threshold (text entry, 1-100)
@@ -1101,161 +785,11 @@ Each tool has a configuration structure:
 - Remove Calibration
 - Reset Config
 
-### Setup Window Structure
-
-Multi-tab configuration interface for tools:
-- Palette configuration (with manual color selection using canvas-based grid)
-- Canvas configuration
-- Custom Colors configuration
-- Color Preview Spot configuration
-- New Layer configuration
-- Color Button configuration
-- Color Button Okay configuration
-- MSPaint Mode configuration
-
-**Manual Color Selection UI Features**:
-- Canvas-based grid display with palette image background
-- Toggle valid/invalid cells (green=valid, red=invalid)
-- Pick centers mode for manual center placement
-- Auto-estimate centers with overlay visualization (InteractivePaletteExtractor)
-- Precision Estimate for advanced palette extraction
-- Show Custom Centers overlay
-- Select All / Deselect All buttons
-- Done button to save changes
-
----
-
-## Control Flow
-
-### Keyboard Control
-
-**Global Listener** (pynput):
-```python
-def on_pynput_key(key):
-    # Handle ESC
-    if key == Key.esc:
-        bot.terminate = True
-    
-    # Handle pause key during drawing
-    if bot.drawing:
-        key_name = extract_key_name(key)
-        if key_name == pause_key.lower():
-            bot.paused = not bot.paused
-```
-
-### Drawing Control Loop
-
-```python
-def draw_loop():
-    for command in drawing_commands:
-        # Check termination
-        if terminate:
-            break
-        
-        # Check pause
-        while paused:
-            time.sleep(0.1)
-            if terminate:
-                break
-        
-        # Execute command
-        execute_command(command)
-        
-        # Update progress overlay
-        update_progress_overlay(completed, total, eta)
-        
-        # Update ETA calculation
-        recalculate_eta()
-```
-
-### Error Handling
-
-```python
-try:
-    operation()
-except NoToolError as e:
-    show_error("Tool not initialized")
-except NoPaletteError as e:
-    show_error("Palette not configured")
-except NoCanvasError as e:
-    show_error("Canvas not configured")
-except NoCustomColorsError as e:
-    show_error("Custom colors not configured")
-except CorruptConfigError as e:
-    show_error("Configuration file is corrupt")
-except Exception as e:
-    show_error(f"Unexpected error: {e}")
-    traceback.print_exc()
-```
-
----
-
-## Design Patterns
-
-### Observer Pattern
-
-**Usage**: Progress updates and status changes
-
-**Implementation**:
-- Window observes Bot state
-- Tooltip updates based on state changes
-- Progress overlay reflects drawing progress
-
-### Strategy Pattern
-
-**Usage**: Drawing modes (Slotted vs Layered)
-
-**Implementation**:
-- Different image processing strategies
-- User selects mode at runtime
-- Bot delegates to appropriate strategy
-
-### Factory Pattern
-
-**Usage**: Tool configuration creation
-
-**Implementation**:
-- Setup window creates tool configurations
-- Standardized configuration structures
-- Extensible to new tools
-
-### Singleton Pattern
-
-**Usage**: Bot instance
-
-**Implementation**:
-- Single Bot instance created in main.py
-- Shared across UI components
-- Centralized drawing control
-
-### Thread-Per-Task Pattern
-
-**Usage**: Long-running operations
-
-**Implementation**:
-- Each operation runs in separate thread
-- Main thread remains responsive
-- Thread monitors update UI
-
 ---
 
 ## Performance Considerations
 
-### Caching Strategy
-
-**Pre-computed Images**:
-- Process once, draw multiple times
-- Stored in `cache/` directory
-- Validated on load (settings match, < 24 hours old)
-- Significant speedup for repeated drawings
-
-**Color Maps**:
-- Palette color coordinates cached
-- Custom color spectrum cached
-- Calibration map loaded from file
-- Cached during session
-
-### Optimization Techniques
+### Optimization Strategies
 
 1. **Color Grouping**: Group pixels by color to minimize color switches
 2. **Frequency Sorting**: Draw most common colors first (Layered mode)
@@ -1286,15 +820,6 @@ To add a new drawing mode:
 1. Define processing algorithm
 2. Add to drawing mode selection UI (OptionMenu/dropdown)
 3. Implement in Bot class (process method)
-4. Update documentation
-
-### Adding New Calibration Features
-
-To add new calibration features:
-
-1. Extend calibration methods in Bot class
-2. Add UI configuration in setup.py
-3. Update calibration progress tracking
 4. Update documentation
 
 ---

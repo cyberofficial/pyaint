@@ -146,7 +146,8 @@ Complete troubleshooting guide for Pyaint - solving common issues and errors.
 1. Click **"Setup"** button
 2. Initialize the Palette by clicking **"Initialize"**
 3. Follow prompts to select palette corners
-4. Verify status shows green after initialization
+4. Set palette dimensions (rows and columns) if needed
+5. Verify status shows green after initialization
 
 ### "Canvas not initialized"
 
@@ -156,7 +157,8 @@ Complete troubleshooting guide for Pyaint - solving common issues and errors.
 1. Click **"Setup"** button
 2. Initialize the Canvas by clicking **"Initialize"**
 3. Follow prompts to select canvas corners
-4. Verify status shows green after initialization
+4. Optionally run **"Calibrate Canvas"** for accurate scaling
+5. Verify status shows green after initialization
 
 ### "Custom colors not initialized"
 
@@ -390,6 +392,56 @@ Complete troubleshooting guide for Pyaint - solving common issues and errors.
 3. Adjust Calibration Step Size (try 2-5)
 4. Make sure drawing app doesn't block mouse input
 5. Close other applications that might interfere
+
+### Color Button not responding
+
+**Symptoms**: Color Button clicks not working during drawing
+
+**Possible Causes**:
+- Button not initialized
+- Delay setting too low
+- Modifier keys not configured properly
+- Button moved after initialization
+
+**Solutions**:
+1. Click **"Setup"** and initialize Color Button
+2. Adjust **Delay** setting (0.1-5.0 seconds)
+3. Configure modifier keys (Ctrl, Alt, Shift) if needed
+4. Re-initialize if button position changed
+5. Verify button is accessible in drawing app
+
+### New Layer button not working
+
+**Symptoms**: New Layer button clicks not working
+
+**Possible Causes**:
+- Button not initialized
+- Button moved after initialization
+- Modifier keys not configured
+- Drawing app doesn't support layer creation
+
+**Solutions**:
+1. Click **"Setup"** and initialize New Layer button
+2. Configure modifier keys (Ctrl, Alt, Shift) if needed
+3. Re-initialize if button position changed
+4. Ensure drawing app has layer functionality
+5. Test button manually to verify it works
+
+### Color Preview Spot not working
+
+**Symptoms**: Color preview not showing during calibration
+
+**Possible Causes**:
+- Preview spot not initialized
+- Spot position incorrect
+- Drawing app blocking preview
+
+**Solutions**:
+1. Click **"Setup"** and initialize Color Preview Spot
+2. Ensure spot is on a neutral background area
+3. Re-initialize if spot position changed
+4. Make sure drawing app doesn't cover the spot
+5. Test with a visible color to verify preview works
 
 ---
 

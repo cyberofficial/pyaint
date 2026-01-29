@@ -146,8 +146,7 @@ Toggle these checkboxes as needed:
 - **Enable Color Button**: Click color picker button before selecting colors
 - **Enable Color Button Okay**: Click confirmation button after color selection
 - **Enable MSPaint Mode**: Double-click on palette instead of single click (optional)
-    - **Enable double-click checkbox**: Enable/disable double-click behavior
-    - **MSPaint Delay (s)**: Delay between double-clicks in seconds (default: 0.5, range: 0.01-5.0s)
+- **MSPaint Delay (s)**: Delay between double-clicks in seconds (default: 0.5, range: 0.01-5.0s)
 - **Color Button delay entry**: Set delay after color button click (0.01-5.0s)
 - **Color Button Okay enable checkbox**: Enable/disable clicking confirmation button
 - **Color Button Okay delay entry**: Set delay after color button okay click (0.01-5.0s)
@@ -237,6 +236,41 @@ Pre-computing caches the image processing for faster subsequent runs.
 - Instant drawing on subsequent runs
 - Time estimation before drawing
 - Useful for images you'll draw multiple times
+
+### Generate Palette (Optional)
+
+Generate and export color palettes from images for use in other applications.
+
+**Steps:**
+1. Load your image using the Image Preview Panel
+2. Click **"Generate Palette"** button
+3. A new window will open with palette generation options
+
+**Palette Generation Options:**
+- **Palette Size**: Number of colors to extract (1-256 colors)
+- **Algorithm**: Color extraction method:
+  - **Frequency**: Most common colors first
+  - **Dominant**: Most visually dominant shades
+  - **Rare**: Least common unique colors
+  - **K-Means**: Cluster-based extraction (may be slow)
+- **Resolve Ties**: Handle colors with identical pixel counts
+- **Export GIMP CSS**: Save palette as GIMP-compatible CSS file
+
+**Features:**
+- Real-time preview with color swatches
+- Statistics showing pixel counts and color distribution
+- Visual indication of tied colors (white outline)
+- Interactive tie resolution dialog
+- Progress tracking for K-Means algorithm
+- Scrollable preview for large palettes
+
+**Export Format:**
+Saves as CSS file compatible with GIMP and other graphics applications:
+```css
+.color1 { color: #FF0000; }
+.color2 { color: #00FF00; }
+/* etc. */
+```
 
 ### Test Drawing
 

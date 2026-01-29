@@ -26,12 +26,14 @@ Pyaint is a Python-based automation tool designed to recreate digital images thr
 - **High-Precision Drawing**: Near-perfect color accuracy with customizable settings
 - **Real-time Progress**: Live tracking with estimated completion time
 - **Intelligent Caching**: Pre-compute image processing for instant subsequent runs
-- **Advanced Palette Features**: Manual center picking, valid position selection, precision estimation
+- **Advanced Palette Features**: Manual center picking, valid position selection, precision estimation, interactive palette extraction with anchor points
 - **Pause/Resume**: Configurable hotkey for interruption and continuation
 - **Skip First Color**: Option to skip drawing the first color in the coordinate map
 - **MSPaint Mode**: Double-click on palette colors instead of single click (optional)
 - **Region-Based Redrawing**: Select specific image areas to redraw
 - **Color Calibration System**: Scan and save custom color mappings for improved accuracy
+- **Canvas Calibration**: Automatic zoom detection using cross-pattern testing and scale factor calculation
+- **Color Palette Generator**: Standalone palette extraction with multiple algorithms (Frequency, Dominant Shades, Rare Shades, K-Means)
 - **Modifier Key Support**: Configure CTRL, ALT, SHIFT modifiers for tool clicks
 - **File Management**: Remove calibration and reset config from UI
 
@@ -41,16 +43,22 @@ The application consists of three main components:
 
 ```
 pyaint/
-├── main.py              # Application entry point
-├── bot.py               # Core drawing engine
+├── main.py                    # Application entry point with keyboard listener
+├── bot.py                     # Core drawing engine with canvas calibration
+├── canvas_calibration.py      # Canvas zoom detection and calibration module
+├── palette_generator.py       # Advanced color palette extraction with multiple algorithms
 ├── ui/
-│   ├── window.py        # Main GUI interface
-│   └── setup.py         # Setup configuration wizard
-├── exceptions.py        # Custom error classes
-├── utils.py             # Utility functions
-├── config.json          # Persistent settings storage
-├── cache/               # Cached computation results
-└── requirements.txt     # Python dependencies
+│   ├── __init__.py           # Package marker
+│   ├── window.py             # Main GUI interface
+│   ├── setup.py              # Setup configuration wizard
+│   └── palette_window.py     # Color palette generator UI
+├── exceptions.py              # Custom error classes
+├── utils.py                  # Image size adjustment utilities
+├── config.json               # Persistent settings storage
+├── cache/                    # Cached computation results
+├── assets/                   # Static assets and preview images
+│   └── sample.png           # Sample image for testing
+└── requirements.txt          # Python dependencies
 ```
 
 ### Data Flow
@@ -84,13 +92,52 @@ The Bot module contains the core drawing engine.
 
 **Key Methods:**
 - `draw()` - Execute full drawing with pause/resume support
-- `draw_test()` - Draw first N lines for calibration
+- `test_draw()` - Draw first N lines for calibration (used by the UI "Test Draw")
 - `simple_test_draw()` - Quick 5-line brush test
-- `precompute_image()` - Pre-process and cache image
-- `pick_palette_color()` - Select palette color
-- `pick_custom_color()` - Select custom color
-- `run_color_calibration()` - Run interactive palette extraction for precise color centers
-- `calibrate_custom_colors()` - Scan and save custom color calibration
+- `precompute()` - Pre-process and cache image (creates cache file for faster runs)
+- Color selection: handled inline by `Bot.draw()` / `Bot.test_draw()`; there are no separate `pick_palette_color()` or `pick_custom_color()` methods in the codebase.
+- `calibrate_custom_colors()` - Scan and save custom color calibration (spectrum scanning)
+- `save_color_calibration()` / `load_color_calibration()` - Persist and restore custom color calibration
+- `get_calibrated_color_position()` - Lookup calibrated RGB → palette position (with tolerance / nearest fallback)
+
+### Canvas Calibration Module (`canvas_calibration.py`)
+
+The Canvas Calibration module provides automatic zoom detection and calibration for drawing applications.
+
+**Key Functions:**
+- `run_calibration(canvas_coords, intended_spacing, user_brush_size)` - Run canvas calibration using cross-pattern testing
+
+**Features:**
+- Draws 9-dot cross pattern to measure actual pixel spacing
+- Calculates scale factor for zoom detection
+- Provides calibration data with scale factor and measurements
+- Returns calibration results for use in drawing operations
+
+### Color Palette Generator Module (`palette_generator.py`)
+
+Advanced color palette extraction with multiple algorithms and export capabilities.
+
+**Key Classes:**
+- `ColorPaletteGenerator`: Main palette extraction class
+
+**Extraction Algorithms:**
+- **Frequency Analysis**: Identifies most common colors by pixel count
+- **Dominant Shades**: Selects most dominant color from each hue group
+- **Rare Shades**: Selects least dominant color from each hue group  
+- **K-Means Clustering**: Multi-threaded K-Means for representative palettes
+
+**Key Methods:**
+- `get_palette(num_colors, algorithm, progress_callback)` - Extract palette using specified algorithm
+- `find_ties(num_colors)` - Find color ties at selection boundaries
+- `export_gimp_css(colors, output_path)` - Export palette as GIMP CSS file
+- `group_colors_by_hue(num_bins)` - Group colors by HSV hue ranges
+
+**Features:**
+- Multi-threaded K-Means with K-Means++ initialization
+- Progress tracking for long operations
+- Tie resolution for frequency-based selection
+- HSV color space analysis
+- GIMP-compatible CSS export
 
 ### UI Module
 
@@ -159,6 +206,36 @@ Configuration wizard for initializing tools with advanced features.
 2. **Pick Centers Mode** - Click exact center points for each color
 3. **Auto-Estimate** - Calculate centers using grid-based estimation
 4. **Precision Estimate** - Advanced calculation using reference points
+
+#### PaletteWindow Class (`ui/palette_window.py`)
+
+Standalone color palette generator with advanced extraction algorithms and export capabilities.
+
+**Key Features:**
+- Multiple extraction algorithms with progress tracking
+- Real-time color swatch preview with statistics
+- Tie resolution for frequency-based selection
+- GIMP CSS export functionality
+- Interactive tie resolution dialog
+
+**Extraction Algorithms:**
+- **Frequency**: Most common colors by pixel count
+- **Dominant Shades**: Most dominant color from each hue group
+- **Rare Shades**: Least dominant color from each hue group
+- **K-Means**: Multi-threaded clustering with progress tracking
+
+**Key Methods:**
+- `get_palette(num_colors, algorithm, progress_callback)` - Extract palette using specified algorithm
+- `find_ties(num_colors)` - Find color ties at selection boundaries
+- `export_gimp_css(colors, output_path)` - Export palette as GIMP CSS file
+- `_resolve_ties_dialog()` - Interactive dialog for resolving color ties
+
+**UI Components:**
+- Settings panel with algorithm selection and palette size controls
+- Real-time preview canvas with scrollable color swatches
+- Statistics panel showing color frequency and distribution
+- Progress tracking for long-running K-Means operations
+- Export dialog for GIMP CSS files
 
 ## Configuration
 

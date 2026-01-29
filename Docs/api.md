@@ -104,15 +104,15 @@ Access via property: `bot.settings[Bot.DELAY]`, `bot.settings[Bot.STEP]`, etc.
 
 #### Initialization Methods
 
-##### `init_palette(pbox=None, prows=None, pcols=None, colors_pos=None, valid_positions=None, manual_centers=None)`
+##### `init_palette(colors_pos=None, prows=None, pcols=None, pbox=None, valid_positions=None, manual_centers=None)`
 
 Initialize the palette configuration.
 
 **Parameters:**
-- `pbox` (tuple, optional): Palette box as (x1, y1, x2, y2) or (x, y, w, h)
+- `colors_pos` (dict, optional): Pre-computed color-to-position mapping
 - `prows` (int, optional): Number of rows in palette grid
 - `pcols` (int, optional): Number of columns in palette grid
-- `colors_pos` (dict, optional): Pre-computed color-to-position mapping
+- `pbox` (tuple, optional): Palette box as (x1, y1, x2, y2) or (x, y, w, h)
 - `valid_positions` (set, optional): Set of valid palette cell indices
 - `manual_centers` (dict, optional): Manual center point overrides {index: (x, y)}
 
@@ -319,7 +319,7 @@ Estimate how long drawing might take based on coordinate data.
 
 #### Calibration Methods
 
-##### `calibrate_custom_colors(grid_box, preview_point, step=2)`
+##### `calibrate_custom_colors(grid_box: Any, preview_point: Any, step: int = 2) -> Dict[Tuple[int, int, int], Tuple[int, int]]`
 
 Runs color calibration by scanning the custom color spectrum.
 
@@ -368,7 +368,7 @@ Load color calibration data from a JSON file.
 - Loads calibration map into memory
 - Prints loaded color count
 
-##### `get_calibrated_color_position(target_rgb, tolerance=20, k_neighbors=4)`
+##### `get_calibrated_color_position(target_rgb: Tuple[int, int, int], tolerance: int = 20, k_neighbors: int = 4) -> Optional[Tuple[int, int]]`
 
 Find the exact calibrated color position for a target RGB value.
 
@@ -430,11 +430,106 @@ Close progress overlay window and cleanup resources.
 - Clears overlay references
 - Handles errors gracefully
 
+#### Canvas Calibration Methods
+
+##### `calibrate_canvas(pattern_size=(50, 50))`
+
+Calibrate canvas by drawing a checkerboard pattern and measuring dot spacing.
+
+**Parameters:**
+- `pattern_size` (tuple, optional): Checkerboard pattern dimensions as (width, height) (default: (50, 50))
+
+**Returns:** None
+
+**Behavior:**
+- Draws a checkerboard pattern on the canvas
+- Measures dot spacing to detect zoom level
+- Adjusts pixel size based on measured spacing
+- Can be cancelled with ESC key
+
+##### `apply_canvas_calibration()`
+
+Apply canvas calibration results to adjust pixel size.
+
+**Parameters:** None
+
+**Returns:** None
+
+**Behavior:**
+- Uses measured spacing to calculate adjusted pixel size
+- Updates Bot settings with new pixel size
+
+##### `save_canvas_calibration(filepath='canvas_calibration.json')`
+
+Save canvas calibration data to a JSON file.
+
+**Parameters:**
+- `filepath` (str, optional): Path to save calibration data (default: 'canvas_calibration.json')
+
+**Returns:** None
+
+**Behavior:**
+- Saves measured spacing and calculated pixel size
+- Includes timestamp metadata
+
+##### `load_canvas_calibration(filepath='canvas_calibration.json')`
+
+Load canvas calibration data from a JSON file.
+
+**Parameters:**
+- `filepath` (str, optional): Path to load calibration data (default: 'canvas_calibration.json')
+
+**Returns:** None
+
+**Behavior:**
+- Loads measured spacing and pixel size
+- Applies calibration to Bot settings
+- Prints loaded calibration details
+
 #### Private Methods
 
 **Note:** Most operations are implemented inline within public methods rather than as separate private helper methods. The Bot class focuses on direct automation logic using pyautogui and pynput libraries.
 
 Key private attributes manage state (pause, terminate, drawing flags) and configuration data.
+
+##### `_draw_checkerboard_pattern(canvas_x, canvas_y, canvas_w, canvas_h, pattern_size)`
+
+Draw a checkerboard pattern for canvas calibration.
+
+**Parameters:**
+- `canvas_x` (int): Canvas left coordinate
+- `canvas_y` (int): Canvas top coordinate
+- `canvas_w` (int): Canvas width
+- `canvas_h` (int): Canvas height
+- `pattern_size` (tuple): Pattern dimensions as (width, height)
+
+**Returns:** None
+
+##### `_measure_drawn_pattern()`
+
+Measure the drawn checkerboard pattern to determine dot spacing.
+
+**Parameters:** None
+
+**Returns:** Measured spacing between dots
+
+##### `_estimate_drawing_time_seconds(cmap)`
+
+Estimate drawing time in seconds (internal helper method).
+
+**Parameters:**
+- `cmap` (dict): Color map from process() method
+
+**Returns:** Estimated time in seconds
+
+##### `_format_time(seconds)`
+
+Format seconds into human-readable time string.
+
+**Parameters:**
+- `seconds` (float): Time in seconds
+
+**Returns:** Formatted time string (e.g., "5m 30s")
 
 ---
 
@@ -686,10 +781,6 @@ These methods start the corresponding background threads:
 - `_init_tpanel()` - Initializes tooltip panel
 - `_init_cpanel()` - Initializes control panel
 - `_init_ipanel()` - Initializes image preview panel
-- `_cpanel_cvs_config(event)` - Canvas configuration callback
-- `_cpanel_frm_config(event)` - Frame configuration callback
-- `_update_mode(selection)` - Updates drawing mode selection
-- `_set_etext(e, txt)` - Sets entry text field value
 - `_set_img(image=None, path=None)` - Sets preview image
 - `_fetch_remote_image(url, timeout=10, retries=3)` - Fetches remote image with error handling
 - `_on_complete_setup()` - Handles setup window completion
@@ -720,13 +811,214 @@ Key event handlers use `_on_` prefix:
 
 Setup window for configuring tools (`ui/setup.py`).
 
+#### Constructor
+
+```python
+SetupWindow(parent, bot, tools, on_complete, title='Child Window', w=1600, h=900, x=5, y=5)
+```
+
+**Parameters:**
+- `parent`: Parent window
+- `bot` (Bot): Bot instance
+- `tools` (dict): Configuration data for all tools
+- `on_complete` (callable): Callback function when setup is complete
+- `title` (str, optional): Window title (default: 'Child Window')
+- `w` (int, optional): Window width (default: 1600)
+- `h` (int, optional): Window height (default: 900)
+- `x` (int, optional): Screen x offset (default: 5)
+- `y` (int, optional): Screen y offset (default: 5)
+
 #### Key Methods
 
-##### `run()`
+##### `_init_tools_panel()`
 
-Opens and runs the setup configuration dialog.
+Initialize the tools configuration panel.
 
-**Returns:** None
+##### `_init_preview_panel()`
+
+Initialize the preview panel for tool visualization.
+
+##### `_set_preview(name)`
+
+Set the preview for a specific tool.
+
+**Parameters:**
+- `name` (str): Tool name
+
+##### `_start_listening(name, tool)`
+
+Start mouse listener for tool configuration.
+
+**Parameters:**
+- `name` (str): Tool name
+- `tool` (dict): Tool configuration
+
+##### `_start_manual_color_selection(name, tool)`
+
+Start manual color selection for palette configuration.
+
+**Parameters:**
+- `name` (str): Tool name
+- `tool` (dict): Tool configuration
+
+##### `_open_color_selection_window()`
+
+Open window for manually selecting valid palette colors.
+
+##### `_draw_grid_with_indicators()`
+
+Draw palette grid with selection indicators.
+
+##### `_draw_grid_for_pick_centers()`
+
+Draw palette grid for picking center points.
+
+##### `_on_grid_canvas_click_pick_centers(event)`
+
+Handle grid canvas click for picking center points.
+
+##### `_on_grid_canvas_click(event)`
+
+Handle grid canvas click for color selection.
+
+##### `_toggle_grid_cell(index)`
+
+Toggle selection state of a grid cell.
+
+**Parameters:**
+- `index` (int): Cell index
+
+##### `_select_all_colors()`
+
+Select all palette colors.
+
+##### `_deselect_all_colors()`
+
+Deselect all palette colors.
+
+##### `_set_toggle_mode()`
+
+Set toggle mode for color selection.
+
+##### `_set_pick_centers_mode()`
+
+Set pick centers mode for manual center point selection.
+
+##### `_pick_center(index)`
+
+Pick center point for a palette cell.
+
+**Parameters:**
+- `index` (int): Cell index
+
+##### `_on_key_press(key)`
+
+Handle keyboard press events.
+
+##### `_auto_estimate_centers()`
+
+Automatically estimate palette cell centers.
+
+##### `_start_precision_estimate()`
+
+Start precision estimation for center points.
+
+##### `_on_extraction_complete(manual_centers)`
+
+Handle completion of palette extraction.
+
+**Parameters:**
+- `manual_centers` (dict): Manual center points
+
+##### `_show_centers_overlay()`
+
+Show overlay with estimated center points.
+
+##### `_show_custom_centers_overlay()`
+
+Show overlay with custom center points.
+
+##### `_on_escape_press(event)`
+
+Handle ESC key press.
+
+##### `_on_center_pick_click(x, y, _, pressed)`
+
+Handle click for picking center points.
+
+##### `_on_color_selection_done()`
+
+Handle completion of manual color selection.
+
+##### `_on_click(x, y, _, pressed)`
+
+Handle mouse clicks for tool configuration.
+
+##### `_on_update_dimensions(event)`
+
+Handle dimension updates.
+
+##### `_validate_delay(value)`
+
+Validate delay input value.
+
+**Parameters:**
+- `value` (str): Delay value to validate
+
+**Returns:** True if valid, False otherwise
+
+##### `_on_update_delay(event)`
+
+Update delay value for Color Button and validate on focus out or return.
+
+##### `_on_enable_toggle(tool_name, intvar)`
+
+Handle enable toggle for a tool.
+
+**Parameters:**
+- `tool_name` (str): Tool name
+- `intvar`: IntVar for toggle state
+
+##### `_on_update_delay_okay(event, tool_name)`
+
+Update delay value for Color Button Okay and validate on focus out or return.
+
+**Parameters:**
+- `event`: Event object
+- `tool_name` (str): Tool name
+
+##### `_on_modifier_toggle(tool_name, modifier_name, intvar)`
+
+Handle modifier key toggle for a tool.
+
+**Parameters:**
+- `tool_name` (str): Tool name
+- `modifier_name` (str): Modifier key name
+- `intvar`: IntVar for toggle state
+
+##### `_start_canvas_calibration(name, tool)`
+
+Start canvas calibration process.
+
+**Parameters:**
+- `name` (str): Tool name
+- `tool` (dict): Tool configuration
+
+##### `_execute_calibration_wrapper()`
+
+Execute calibration wrapper for thread management.
+
+##### `_run_canvas_calibration(name, tool, canvas_x, canvas_y, canvas_w, canvas_h)`
+
+Run canvas calibration process.
+
+**Parameters:**
+- `name` (str): Tool name
+- `tool` (dict): Tool configuration
+- `canvas_x` (int): Canvas left coordinate
+- `canvas_y` (int): Canvas top coordinate
+- `canvas_w` (int): Canvas width
+- `canvas_h` (int): Canvas height
 
 ### InteractivePaletteExtractor Class
 
@@ -749,21 +1041,317 @@ InteractivePaletteExtractor(parent, bot, current_tool, tool_name, valid_position
 
 #### Key Methods
 
+##### `_setup_ui()`
+
+Set up the user interface for palette extraction.
+
+##### `_update_controls()`
+
+Update UI controls based on current phase.
+
 ##### `_start_phase_1()`
 
 Start phase 1: Region selection.
+
+##### `_on_region_click(x, y, button, pressed)`
+
+Handle region selection click.
+
+**Parameters:**
+- `x` (int): X coordinate
+- `y` (int): Y coordinate
+- `button`: Button identifier
+- `pressed` (bool): Whether button was pressed
+
+##### `_capture_palette()`
+
+Capture palette image from selected region.
 
 ##### `_start_phase_2()`
 
 Start phase 2: Grid configuration.
 
+##### `_on_set_grid()`
+
+Handle grid dimension input.
+
 ##### `_start_phase_3()`
 
 Start phase 3: Anchor placement.
 
+##### `_draw_palette_with_grid()`
+
+Draw palette with grid overlay.
+
+##### `_on_canvas_click(event)`
+
+Handle canvas click for anchor placement.
+
+##### `_get_required_anchors()`
+
+Get required anchor points for interpolation.
+
+**Returns:** List of required anchor indices
+
+##### `_get_corner_indices()`
+
+Get corner indices of the palette grid.
+
+**Returns:** List of corner indices
+
+##### `_recalculate_interpolation()`
+
+Recalculate color interpolation based on anchor points.
+
+##### `_clear_anchors()`
+
+Clear all placed anchor points.
+
+##### `_back_to_phase_2()`
+
+Return to phase 2 (grid configuration).
+
+##### `_back_to_phase_1()`
+
+Return to phase 1 (region selection).
+
 ##### `_on_extract_colors()`
 
 Extract colors and complete extraction.
+
+##### `_save_temp()`
+
+Save current state to temp file.
+
+##### `_try_restore()`
+
+Try to restore state from temp file.
+
+##### `_on_close()`
+
+Handle window close event.
+
+### PaletteWindow Class
+
+Color palette generation window for analyzing images and extracting color palettes (`ui/palette_window.py`).
+
+#### Constructor
+
+```python
+PaletteWindow(parent: tk.Tk, image_path: str, bot)
+```
+
+**Parameters:**
+- `parent`: Parent Tkinter window
+- `image_path` (str): Path to image file
+- `bot` (Bot): Bot instance
+
+#### Key Methods
+
+##### `_init_ui()`
+
+Initialize the user interface.
+
+##### `_update_palette_preview()`
+
+Update palette preview based on current size and algorithm.
+
+##### `_draw_color_swatches()`
+
+Draw color swatches on the canvas.
+
+##### `_update_info()`
+
+Update information display.
+
+##### `_resolve_ties_dialog()`
+
+Open dialog to resolve color ties.
+
+##### `_export_palette()`
+
+Export palette to GIMP CSS format.
+
+---
+
+## CanvasCalibrator Class
+
+Canvas calibration using cross-pattern dot measurement (`canvas_calibration.py`).
+
+#### Constructor
+
+```python
+CanvasCalibrator(canvas_coords)
+```
+
+**Parameters:**
+- `canvas_coords` (tuple): Canvas coordinates (x, y, width, height)
+
+#### Key Methods
+
+##### `dot_size_from_screenshot(center_x: int, center_y: int) -> Optional[Tuple[int, int]]`
+
+Measure dot size from screenshot at given center position.
+
+**Parameters:**
+- `center_x` (int): Center X coordinate
+- `center_y` (int): Center Y coordinate
+
+**Returns:** Tuple of (width, height) or None if measurement fails
+
+##### `measure_spacing(center_pos: Tuple[int, int], intended_spacing: int = 10) -> Tuple[int, int]`
+
+Measure spacing between dots in a cross pattern.
+
+**Parameters:**
+- `center_pos` (tuple): Center position as (x, y)
+- `intended_spacing` (int, optional): Intended spacing between dots (default: 10)
+
+**Returns:** Tuple of (horizontal_spacing, vertical_spacing)
+
+---
+
+## run_calibration Function
+
+Run complete canvas calibration process (`canvas_calibration.py`).
+
+```python
+run_calibration(canvas_coords: tuple, intended_spacing: int = 10, pattern_size: tuple = (50, 50)) -> dict
+```
+
+**Parameters:**
+- `canvas_coords` (tuple): Canvas coordinates (x, y, width, height)
+- `intended_spacing` (int, optional): Intended spacing between dots (default: 10)
+- `pattern_size` (tuple, optional): Checkerboard pattern dimensions (default: (50, 50))
+
+**Returns:** Dictionary with measured spacing and calculated pixel size
+
+---
+
+## ColorPaletteGenerator Class
+
+Generates color palettes from images with multiple selection algorithms (`palette_generator.py`).
+
+#### Constructor
+
+```python
+ColorPaletteGenerator(image_path: str, ignore_white: bool = True)
+```
+
+**Parameters:**
+- `image_path` (str): Path to image file
+- `ignore_white` (bool, optional): Whether to ignore white pixels (default: True)
+
+#### Key Methods
+
+##### `analyze_image() -> None`
+
+Analyze the image and count color frequencies.
+
+##### `rgb_to_hsv(rgb: Tuple[int, int, int]) -> Optional[Tuple[float, float, float]]`
+
+Convert RGB color to HSV color space.
+
+**Parameters:**
+- `rgb` (tuple): RGB color as (r, g, b)
+
+**Returns:** HSV color as (h, s, v) or None if conversion fails
+
+##### `group_colors_by_hue(num_bins: int = 16) -> Dict[int, List[Tuple[Tuple[int, int, int], int]]]`
+
+Group colors by hue bins.
+
+**Parameters:**
+- `num_bins` (int, optional): Number of hue bins (default: 16)
+
+**Returns:** Dictionary mapping hue bins to color lists
+
+##### `get_palette(num_colors: int, algorithm: str = "frequency", progress_callback=None) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]`
+
+Get color palette using specified algorithm.
+
+**Parameters:**
+- `num_colors` (int): Number of colors to extract
+- `algorithm` (str): Algorithm name - "frequency", "dominant_shades", "rare_shades", or "kmeans"
+- `progress_callback` (callable, optional): Callback for progress updates
+
+**Returns:** Tuple of (colors list, frequencies list, color percentage dict)
+
+##### `_get_by_frequency(num_colors: int) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]`
+
+Get palette by color frequency.
+
+##### `_get_by_dominant_shades(num_colors: int) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]`
+
+Get palette by dominant shades.
+
+##### `_get_by_rare_shades(num_colors: int) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]`
+
+Get palette by rare shades.
+
+##### `_get_by_kmeans(num_colors: int) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]`
+
+Get palette using K-Means clustering algorithm.
+
+##### `find_ties(num_colors: int) -> Dict[int, List[Tuple[int, int, int]]]`
+
+Find color ties at boundary positions.
+
+**Parameters:**
+- `num_colors` (int): Number of colors
+
+**Returns:** Dictionary mapping boundary indices to tied colors
+
+##### `get_color_percentage(count: int) -> float`
+
+Calculate color percentage in image.
+
+**Parameters:**
+- `count` (int): Color count
+
+**Returns:** Percentage value
+
+##### `export_gimp_css(colors: List[Tuple[int, int, int]], output_path: str) -> None`
+
+Export palette to GIMP CSS format.
+
+**Parameters:**
+- `colors` (list): List of RGB colors
+- `output_path` (str): Output file path
+
+##### `_kmeans_plus_plus_init(data: List[Tuple[int, int, int]], k: int) -> List[Tuple[float, float, float]]`
+
+Initialize K-Means centroids using K-Means++ algorithm.
+
+##### `_find_nearest_centroid(color: Tuple[int, int, int], centroids: List[Tuple[float, float, float]]) -> int`
+
+Find nearest centroid for a color.
+
+##### `_color_distance(color1: Tuple[int, int, int], color2: Tuple[float, float, float]) -> float`
+
+Calculate color distance.
+
+##### `_calculate_weighted_average(colors: List[Tuple[int, int, int]]) -> Tuple[float, float, float]`
+
+Calculate weighted average of colors.
+
+##### `_centroids_converged(old: List[Tuple[float, float, float]], new: List[Tuple[float, float, float]], threshold: float = 0.1) -> bool`
+
+Check if centroids have converged.
+
+##### `_count_colors_for_centroid(centroid_idx: int) -> int`
+
+Count colors assigned to a centroid.
+
+##### `_get_current_centroids() -> List[Tuple[float, float, float]]`
+
+Get current centroids.
+
+##### `get_color_stats() -> List[Dict]`
+
+Get color statistics.
+
+**Returns:** List of color statistics dictionaries
 
 ---
 
@@ -940,6 +1528,18 @@ Main application window and UI.
 
 Setup window for tool configuration and interactive palette extraction.
 
+### `ui/palette_window.py`
+
+Color palette generation window for analyzing images and extracting color palettes.
+
+### `palette_generator.py`
+
+Color palette generator module with multiple selection algorithms (frequency, dominant shades, rare shades, K-Means).
+
+### `canvas_calibration.py`
+
+Canvas calibration module using cross-pattern dot measurement to detect zoom level and adjust pixel size.
+
 ---
 
 ## See Also
@@ -948,3 +1548,4 @@ Setup window for tool configuration and interactive palette extraction.
 - [Configuration Guide](./configuration.md) - Configuration options
 - [Tutorial](./tutorial.md) - Step-by-step usage guide
 - [Troubleshooting](./troubleshooting.md) - Common issues and solutions
+- [Usage Guide](./usage-guide.md) - User guide for drawing operations

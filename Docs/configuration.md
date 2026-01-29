@@ -66,7 +66,17 @@ Complete guide to configuring Pyaint's settings and tools.
   "Canvas": {
     "status": true,
     "box": [x1, y1, x2, y2],
-    "preview": "assets/Canvas_preview.png"
+    "preview": "assets/Canvas_preview.png",
+    "calibration": {
+      "scale_factor": 1.0,
+      "measured_spacing": 12.0,
+      "intended_spacing": 12,
+      "dot_size": [10, 12],
+      "user_brush_size": 10,
+      "calibration_date": "2024-01-01 12:00:00"
+    },
+    "user_brush_size": 10,
+    "brush_size": [10, 12]
   },
   "Custom Colors": {
     "status": true,
@@ -118,6 +128,10 @@ Complete guide to configuring Pyaint's settings and tools.
       "alt": false,
       "shift": false
     }
+  },
+  "redraw_region": {
+    "region": [x1, y1, x2, y2],
+    "selected": false
   },
   "last_image_url": "https://..."
 }
@@ -255,6 +269,40 @@ Complete guide to configuring Pyaint's settings and tools.
 | `status` | bool | True if initialized |
 | `box` | array | [x1, y1, x2, y2] screen coordinates |
 | `preview` | string | Path to preview screenshot |
+| `calibration` | object | Canvas calibration data (optional) |
+| `user_brush_size` | int | User's brush size in pixels (optional) |
+| `brush_size` | array | Measured brush size [width, height] (optional) |
+
+**Canvas Calibration:**
+
+**Purpose:** Automatically detect canvas zoom level and adjust drawing accuracy
+
+**Calibration Fields:**
+| Field | Type | Description |
+|--------|------|-------------|
+| `scale_factor` | float | Zoom scale factor (1.0 = 100%) |
+| `measured_spacing` | float | Actual measured dot spacing |
+| `intended_spacing` | int | Target pixel size setting |
+| `dot_size` | array | Measured brush size [width, height] |
+| `user_brush_size` | int | User's entered brush size |
+| `calibration_date` | string | When calibration was performed |
+
+**Calibration Process:**
+1. User enters their brush size in pixels
+2. System draws 9 dots in cross pattern
+3. System measures actual dot spacing and brush size
+4. Scale factor is calculated
+5. Future drawings adjust pixel size based on scale
+
+**UI Controls:**
+- **Calibrate Canvas**: Button in setup window
+- Shows calibration status and results
+- Calibration date and scale factor displayed
+
+**Impact:**
+- Compensates for canvas zoom levels
+- Ensures accurate pixel spacing
+- Improves drawing accuracy at any zoom level
 
 ### Custom Colors
 
@@ -362,6 +410,31 @@ Complete guide to configuring Pyaint's settings and tools.
 - When enabled: Color button is still clicked to open color picker, but this confirms the selection
 - Supports modifier keys (useful if app requires keyboard shortcut)
 
+### File Management
+
+**Status:** Built-in feature (always available)
+
+**Purpose:** Manage configuration and calibration files
+
+**UI Controls:**
+- **Remove Calibration**: Delete color calibration file
+- **Reset Config**: Delete main configuration file
+
+**Remove Calibration:**
+- Deletes `color_calibration.json` file
+- Clears calibration data from memory
+- Forces recalibration on next color calibration run
+
+**Reset Config:**
+- Deletes `config.json` file  
+- Resets all settings to defaults
+- Requires tool reconfiguration after restart
+
+**Safety Features:**
+- Confirmation dialogs for both operations
+- Detailed status messages
+- Graceful error handling
+
 ---
 
 ## Advanced Features
@@ -422,6 +495,35 @@ Complete guide to configuring Pyaint's settings and tools.
 **Behavior:**
 - When enabled, the first color in the sorted color map is skipped
 - Useful when you want to start with a specific color manually selected
+
+### Redraw Region
+
+**Purpose:** Select and redraw specific regions of the canvas
+
+**Fields:**
+
+| Field | Type | Default | Description |
+|--------|--------|----------|-------------|
+| `region` | array | null | [x1, y1, x2, y2] canvas coordinates |
+| `selected` | bool | false | Whether a region is currently selected |
+
+**UI Controls:**
+- **Pick Region**: Click to select upper-left and bottom-right corners
+- **Draw Region**: Draw only the selected region
+
+**Behavior:**
+- Region selection works like canvas setup (two corner clicks)
+- Selected region is displayed in the UI
+- Only processes and draws the specified area
+- Maintains same drawing settings and options
+- Supports pause/resume during redraw
+- Provides time estimates for redraw
+
+**When to Use:**
+- Fix mistakes in specific areas without redrawing entire image
+- Touch up details in particular regions
+- Experiment with different settings on small areas
+- Save time when only part of the image needs updates
 
 ---
 

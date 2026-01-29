@@ -255,14 +255,15 @@ Configuration is stored in `config.json` with the following structure:
     "delay": 0.1,
     "pixel_size": 12,
     "precision": 0.9,
-    "jump_delay": 0.5
+    "jump_delay": 0.5,
+    "jump_threshold": 5
   },
   "drawing_options": {
     "ignore_white_pixels": false,
-    "use_custom_colors": false,
-    "skip_first_color": false
+    "use_custom_colors": false
   },
   "pause_key": "p",
+  "skip_first_color": false
   "calibration_settings": {
     "step_size": 2
   },
@@ -340,6 +341,11 @@ Configuration is stored in `config.json` with the following structure:
   "last_image_url": "https://..."
 }
 ```
+
+**Note:** The following keys are optional and only appear when configured by the user:
+- `MSPaint Mode` - Only exists if MSPaint Mode has been configured
+- `color_preview_spot` - Only exists if Color Preview Spot has been configured
+- `Canvas.calibration` - Contains canvas calibration data (scale_factor, measured_spacing, etc.) when calibration has been run
 
 ## API Reference
 

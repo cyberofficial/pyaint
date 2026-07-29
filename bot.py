@@ -177,6 +177,9 @@ class Bot:
         # Path optimization — reorder strokes to minimize cursor jumps
         self.path_optimization = True
 
+        # Wait After Draw — use stroke duration as jump delay instead of fixed time
+        self.wait_after_draw = False
+
         # Canvas and palette will be initialized later
         self._canvas = None
         self._palette = None
@@ -1311,6 +1314,7 @@ class Bot:
                 except:
                     pass
 
+            last_stroke_duration = 0.0  # For wait-after-draw feature
             for line_idx, line in enumerate(lines):
                 # Skip lines already drawn if resuming
                 if color_idx == self.draw_state['color_idx'] and line_idx < self.draw_state['line_idx']:
@@ -1354,8 +1358,13 @@ class Bot:
                 if last_stroke_end is not None:
                     jump_distance = ((start_pos[0] - last_stroke_end[0]) ** 2 + (start_pos[1] - last_stroke_end[1]) ** 2) ** 0.5
                     if jump_distance > self.jump_threshold:
-                        print(f"Large jump detected ({jump_distance:.1f} pixels) - adding {self.settings[Bot.JUMP_DELAY]}s delay")
-                        time.sleep(self.settings[Bot.JUMP_DELAY])
+                        if self.wait_after_draw and last_stroke_duration > 0:
+                            wait_time = last_stroke_duration
+                            print(f"Large jump ({jump_distance:.0f}px) — wait-after-draw: {wait_time:.2f}s")
+                        else:
+                            wait_time = self.settings[Bot.JUMP_DELAY]
+                            print(f"Large jump detected ({jump_distance:.1f} pixels) - adding {wait_time}s delay")
+                        time.sleep(wait_time)
 
                 # Wait if paused - detect when we come out of pause for stroke replay
                 was_paused = False
@@ -1382,6 +1391,7 @@ class Bot:
                     return 'terminated'
 
                 # Draw line with pause support (complete each stroke before checking pause)
+                stroke_start_time = time.time()
                 end_pos = (line[1][0], line[1][1])
 
                 # Calculate distance
@@ -1416,6 +1426,9 @@ class Bot:
                         time.sleep(segment_delay / segments)  # Distribute delay
 
                     pyautogui.mouseUp()
+
+                # Record stroke duration for wait-after-draw
+                last_stroke_duration = time.time() - stroke_start_time
 
                 # Check for pause after completing the stroke
                 if self.paused or self.terminate:

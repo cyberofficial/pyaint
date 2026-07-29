@@ -319,6 +319,14 @@ class Window:
         self._path_opt_cb.grid(column=1, row=curr_row, padx=5, pady=5, sticky='w')
         curr_row += 1
 
+        # Wait After Draw option
+        Label(self._cframe, text='Wait After Draw', font=Window.TITLE_FONT).grid(column=0, row=curr_row, padx=5, pady=5, sticky='w')
+        self._wait_after_draw_var = IntVar()
+        self._wait_after_draw_cb = Checkbutton(self._cframe, text='Match jump delay to stroke time',
+            variable=self._wait_after_draw_var, command=self._on_wait_after_draw_toggle)
+        self._wait_after_draw_cb.grid(column=1, row=curr_row, padx=5, pady=5, sticky='w')
+        curr_row += 1
+
         # MSPaint Mode option
         Label(self._cframe, text='MSPaint Mode', font=Window.TITLE_FONT).grid(column=0, row=curr_row, padx=5, pady=5, sticky='w')
         self._mspaint_mode_var = IntVar()
@@ -669,6 +677,17 @@ class Window:
         enabled = bool(self._path_opt_var.get())
         self.bot.path_optimization = enabled
         self.tools['path_optimization'] = enabled
+        try:
+            if not getattr(self, '_initializing', False):
+                with open(self._config_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.tools, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"Failed to save config: {e}")
+
+    def _on_wait_after_draw_toggle(self):
+        enabled = bool(self._wait_after_draw_var.get())
+        self.bot.wait_after_draw = enabled
+        self.tools['wait_after_draw'] = enabled
         try:
             if not getattr(self, '_initializing', False):
                 with open(self._config_path, 'w', encoding='utf-8') as f:
@@ -1120,6 +1139,13 @@ class Window:
             self._path_opt_var.set(1 if self.bot.path_optimization else 0)
         except Exception:
             self._path_opt_var.set(1)
+
+        # Apply Wait After Draw setting to bot if present
+        try:
+            self.bot.wait_after_draw = bool(self.tools.get('wait_after_draw', 0))
+            self._wait_after_draw_var.set(1 if self.bot.wait_after_draw else 0)
+        except Exception:
+            self._wait_after_draw_var.set(0)
 
         # Apply MSPaint Mode settings to bot if present
         try:

@@ -1,654 +1,124 @@
 # Pyaint Usage Guide
 
-Step-by-step instructions for using Pyaint effectively.
+## Setup Process
 
-## Table of Contents
+Click **Setup** to open the configuration wizard. Each tool has an **Initialize** button — click it, then click the relevant area in your drawing app.
 
-- [Getting Started](#getting-started)
-- [Initial Setup](#initial-setup)
-- [Basic Drawing](#basic-drawing)
-- [Color Calibration](#color-calibration)
-- [Region-Based Redrawing](#region-based-redrawing)
-- [Advanced Features](#advanced-features)
-- [File Management](#file-management)
-- [Keyboard Controls](#keyboard-controls)
-- [Tips and Best Practices](#tips-and-best-practices)
+### Palette
 
-## Getting Started
+1. Set **Rows** and **Columns** matching your palette grid
+2. Click **Initialize**
+3. Click **upper-left corner** of palette → click **lower-right corner**
+4. The screenshot captures all colors into a RGB→position map
 
-### Installation
+**Post-init options:**
+- **Manual Color Selection**: Toggle valid/invalid cells, pick exact center points
+- **Auto-Estimate**: Quick grid-based center calculation
+- **Edit Colors**: Opens Interactive Palette Extractor with anchor-point placement (3-phase: region → grid → anchors)
 
-1. **Clone or download** repository
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Canvas
 
-3. **Run application**:
-   ```bash
-   python main.py
-   ```
+1. Click **Initialize**
+2. Click upper-left → lower-right corners of your drawing area
+3. (Optional) Run **Calibrate Canvas** — draws a cross-pattern, measures spacing, calculates zoom scale factor
 
-**Requirements:**
-- Python 3.8 or higher
-- Windows operating system
-- Drawing application (MS Paint, Clip Studio Paint, etc.) running
+### Custom Colors (Optional)
 
-## Initial Setup
+1. Click **Initialize**
+2. Click upper-left → lower-right corners of the color spectrum in your app
 
-When you first launch Pyaint, you'll see a main application window with three panels:
+### Color Preview Spot (Optional for Calibration)
 
-![Main Application Window](images/main-ui.png)
+1. Click **Initialize**
+2. Click the exact pixel where your app previews the selected color
 
-- **Control Panel** (left): Drawing settings and all action buttons
-- **Image Preview Panel** (right): Image loading and display
-- **Tooltip Panel** (bottom): Status messages and progress tracking
+### New Layer / Color Button / Color Button Okay (Optional)
 
-The File Management section is located in the Control Panel and provides configuration file management.
+Each is a single-click tool: Initialize → click the button location in your app. Configure modifier keys (Ctrl/Alt/Shift) if the app requires keyboard shortcuts.
 
-1. Click **"Setup"** button in Control Panel
-2. A Setup Window will appear with tools configuration
+## Drawing Flow
 
-![Setup Window](images/setup-window.png)
+1. **Load image** — enter URL and click Search, or click Open File
+2. **Select mode** — Slotted, Layered, or Single Color
+3. **Adjust settings** — Delay, Pixel Size, Precision, Jump Delay
+4. **Enable options** — Ignore White Pixels, Use Custom Colors, Skip First Color, etc.
+5. **(Optional) Pre-compute** — runs processing + stroke optimization (if enabled), saves to cache
+6. **Test Draw** — draws first 20 lines to verify brush alignment
+7. **Simple Test Draw** — draws 5 horizontal lines (no color picking)
+8. **Start** — full drawing. App minimizes during drawing. ESC to stop, pause key to pause/resume
 
-### Initializing Tools
+## Single Color Mode
 
-You need to initialize essential tools before drawing:
+For line art and images where background removal is needed:
 
-#### 1. Palette
+1. Select "Single Color" from **Draw Mode** dropdown
+2. Config window opens with your loaded image
+3. **Click on the background color** you want to ignore
+4. Adjust **Tolerance** slider — controls color match strictness
+5. Live preview shows red overlay on drawn pixels, transparent on ignored
+6. Quick actions: **White Background** (tolerance 16), **Binarize** (tolerance 64, for high-contrast), **Black Background**
+7. Click **Confirm** to save settings
+8. Click **Start** — bot draws all non-background pixels. You pick your brush color manually
 
-The palette defines the available colors for drawing.
+**Note**: In Single Color mode, the bot skips all palette clicking, Color Button clicks, and New Layer clicks. The `skip_first_color` setting is also bypassed. Set your brush color in your drawing app before starting.
 
-**Steps:**
-1. Click **"Initialize"** next to Palette
-2. Click on the **upper-left corner** of your palette in your drawing application
-3. Click on the **lower-right corner** of your palette
-4. The system will scan the palette and capture all colors
-5. Status will change to **"INITIALIZED"** (green)
+## Path Optimization
 
-**Configuration Options:**
-- **Rows/Columns**: Set the number of rows and columns in your palette grid
-- **Valid Positions**: Toggle which palette cells are valid (advanced)
-- **Manual Centers**: Pick exact center points for precision (advanced)
-- **Auto-Estimate**: Quickly calculate center points (advanced)
-- **Interactive Palette Extraction**: Precise, user-friendly configuration with anchor points (advanced)
+Toggle **Minimize cursor jumps** in the Control Panel. When enabled:
+- Stroke order is optimized per color group using nearest-neighbor algorithm
+- Can reverse stroke direction for shorter cursor travel
+- Eliminates scanline jump patterns
+- If on during Pre-compute, optimized order is cached
+- Works with all drawing modes
 
-#### 2. Canvas
+## Canvas Calibration
 
-The canvas defines the drawing area.
+Detects zoom level and brush size for consistent results:
 
-**Steps:**
-1. Click **"Initialize"** next to Canvas
-2. Click on the **upper-left corner** of your canvas in your drawing application
-3. Click on the **lower-right corner** of your canvas
-4. Status will change to **"INITIALIZED"** (green)
-
-#### 3. Custom Colors (Optional)
-
-The custom colors feature enables unlimited color options.
-
-**Steps:**
-1. Click **"Initialize"** next to Custom Colors
-2. Click on the **upper-left corner** of your custom colors area
-3. Click on the **lower-right corner** of your custom colors area
-4. Status will change to **"INITIALIZED"** (green)
-
-**When to Use:**
-- Your image has more colors than the palette provides
-- You need precise color matching
-
-#### 4. Color Preview Spot (Optional for Calibration)
-
-Required for color calibration to capture RGB values.
-
-**Steps:**
-1. Click **"Initialize"** next to Color Preview Spot
-2. Click on the **exact spot** where your selected color appears when using the custom colors spectrum
-3. Status will change to **"INITIALIZED"** (green)
-
-**When to Use:**
-- When you want to run color calibration
-- For improved color accuracy with custom colors
-
-### Configuring Drawing Settings
-
-In the Control Panel, adjust these settings:
-
-| Setting | Range | Description | Recommended |
-|----------|--------|-------------|--------------|
-| Delay | 0.01-10.0s | Stroke timing | 0.1s |
-| Pixel Size | 1-50 | Detail level | 12 |
-| Precision | 0.0-1.0 | Color accuracy | 0.9 |
-| Jump Delay | 0.0-2.0s | Cursor jump delay | 0.5s |
-| Calibration Step | 1-10 | Pixel step for calibration | 2 |
-| Jump Threshold | 1-100 | Pixel distance for jump detection (default: 5) | 5 |
-
-**Tips:**
-- Start with default values and adjust based on test results
-- Higher precision = more accurate but slower
-- Larger pixel size = less detail but faster drawing
-
-### Drawing Modes
-
-Choose your drawing mode from the dropdown:
-
-- **Slotted**: Fast processing, simple color-to-lines mapping
-- **Layered**: Better visual results with color frequency sorting (recommended)
-
-### Drawing Options
-
-Toggle these checkboxes as needed:
-
-- **Ignore White Pixels**: Skip drawing white areas (useful for white canvas)
-- **Use Custom Colors**: Enable advanced color mixing (requires Custom Colors tool)
-- **Skip First Color**: Skip the first color in the drawing sequence (useful when first color is background)
-- **Enable New Layer**: Automatically create new layers for each color
-- **Enable Color Button**: Click color picker button before selecting colors
-- **Enable Color Button Okay**: Click confirmation button after color selection
-- **Enable MSPaint Mode**: Double-click on palette instead of single click (optional)
-- **MSPaint Delay (s)**: Delay between double-clicks in seconds (default: 0.5, range: 0.01-5.0s)
-- **Color Button delay entry**: Set delay after color button click (0.01-5.0s)
-- **Color Button Okay enable checkbox**: Enable/disable clicking confirmation button
-- **Color Button Okay delay entry**: Set delay after color button okay click (0.01-5.0s)
-
-### File Management
-
-The File Management section provides buttons to manage configuration files directly from the UI.
-
-#### Remove Calibration
-
-**Purpose:** Clear color calibration data to force recalibration or remove outdated data.
-
-**What it Does:** Deletes `color_calibration.json` file and clears calibration data from memory.
-
-**When to Use:**
-- Color calibration data is outdated or incorrect
-- You want to recalibrate from scratch
-- Calibration was done on different display settings
-- You're starting fresh
-
-**Steps:**
-1. Click **"Remove Calibration"** button in Control Panel
-2. Confirm deletion in the warning dialog
-3. Status message will confirm success or error
-
-**After Deletion:**
-- Bot will revert to keyboard input for custom colors
-- Run **"Run Calibration"** again to rebuild calibration data
-
-#### Reset Config
-
-**Purpose:** Reset all settings, tools, and preferences to default values.
-
-**What it Does:** Deletes `config.json` file to start fresh.
-
-**What is Lost:**
-- All tool configurations (Palette, Canvas, Custom Colors, etc.)
-- All drawing settings (Delay, Pixel Size, Precision, Jump Delay)
-- All feature toggles (New Layer, Color Button, MSPaint Mode, etc.)
-- Pause key configuration
-- Last used image URL
-
-**When to Use:**
-- Configuration is corrupted or causing issues
-- You want to start completely fresh
-- Settings are lost and need to reconfigure everything
-
-**Steps:**
-1. Click **"Reset Config"** button in Control Panel
-2. Confirm deletion in the warning dialog
-3. Status message will confirm success or error
-
-**After Reset:**
-- **Restart the application** to load default configurations
-- Run **"Setup"** to reconfigure all tools
-- Adjust drawing settings as needed
-- Run **"Run Calibration"** if using custom colors
-
-**Safety:**
-- Both buttons include confirmation dialogs to prevent accidental data loss
-- Check the status tooltip at the bottom of the window for detailed feedback
-
-## Basic Drawing
-
-### Loading an Image
-
-1. **Enter a URL** in the Image Preview Panel
-2. Click **"Search"** to load the image
-3. OR click **"Open File"** to browse locally
-4. The image will appear in the preview panel
-
-**Supported Sources:**
-- Local files (PNG, JPG, BMP, etc.)
-- Remote URLs (direct image links)
-
-### Pre-computation (Optional)
-
-Pre-computing caches the image processing for faster subsequent runs.
-
-**Steps:**
-1. Load your image
-2. Click **"Pre-compute"** button
-3. Wait for processing to complete (progress will be shown)
-4. Estimated drawing time will be displayed
-
-**Benefits:**
-- Instant drawing on subsequent runs
-- Time estimation before drawing
-- Useful for images you'll draw multiple times
-
-### Generate Palette (Optional)
-
-Generate and export color palettes from images for use in other applications.
-
-**Steps:**
-1. Load your image using the Image Preview Panel
-2. Click **"Generate Palette"** button
-3. A new window will open with palette generation options
-
-**Palette Generation Options:**
-- **Palette Size**: Number of colors to extract (1-256 colors)
-- **Algorithm**: Color extraction method:
-  - **Frequency**: Most common colors first
-  - **Dominant**: Most visually dominant shades
-  - **Rare**: Least common unique colors
-  - **K-Means**: Cluster-based extraction (may be slow)
-- **Resolve Ties**: Handle colors with identical pixel counts
-- **Export GIMP CSS**: Save palette as GIMP-compatible CSS file
-
-**Features:**
-- Real-time preview with color swatches
-- Statistics showing pixel counts and color distribution
-- Visual indication of tied colors (white outline)
-- Interactive tie resolution dialog
-- Progress tracking for K-Means algorithm
-- Scrollable preview for large palettes
-
-**Export Format:**
-Saves as CSS file compatible with GIMP and other graphics applications:
-```css
-.color1 { color: #FF0000; }
-.color2 { color: #00FF00; }
-/* etc. */
-```
-
-### Test Drawing
-
-Before a full drawing, test your brush settings:
-
-#### Simple Test Draw
-
-Quick 5-line calibration without color picking.
-
-**Steps:**
-1. Select your desired color in your painting application
-2. Click **"Simple Test Draw"**
-3. The bot will draw 5 horizontal lines at the canvas upper-left
-4. Adjust your brush size in the painting application if needed
-
-#### Test Draw
-
-Detailed calibration with color switching.
-
-**Steps:**
-1. Click **"Test Draw"**
-2. The bot will draw the first 20 lines with color changes
-3. Observe the output to verify:
-   - Colors are correct
-   - Lines are drawn smoothly
-   - Timing is appropriate
-
-**Use For:**
-- Verifying brush size settings
-- Testing color selection accuracy
-- Checking jump delay effectiveness
-
-### Full Drawing
-
-1. Click **"Start"** button
-2. A warning dialog will appear (ESC and pause key info)
-3. Click "OK" to continue
-4. The application will minimize
-5. Drawing will begin with progress updates
-
-**During Drawing:**
-- Progress percentage displays in Tooltip Panel
-- Current color and stroke count shown
-- Time remaining estimate updates
-
-**Controls:**
-- **ESC**: Stop drawing immediately
-- **Pause Key** (default 'p'): Pause/resume drawing
-- Press pause key again to resume
+1. Draw a test line to set your brush size
+2. In Setup, click **Calibrate Canvas**
+3. Click upper-left → lower-right of your canvas
+4. Bot draws 9 dots in a cross pattern
+5. Measures actual spacing via screenshot
+6. Calculates scale factor applied to pixel size during drawing
 
 ## Color Calibration
 
-Color calibration improves accuracy when using custom colors by creating a precise mapping of RGB values to spectrum positions.
+Creates a precise RGB→screen-position map for custom colors:
 
-### When to Use
+1. Configure **Custom Colors** (spectrum area)
+2. Configure **Color Preview Spot** (where selected color appears)
+3. Set **Calibration Step Size** (1-10, default: 2)
+4. Click **Run Calibration**
+5. Bot drags through the spectrum, capturing RGB at each step
+6. Saved to `color_calibration.json` — auto-loaded during draws
 
-- You want the most accurate colors possible
-- Your custom colors spectrum is complex
-- You're drawing multiple times with the same colors
+## Region-Based Redraw
 
-### Requirements
+1. Click **Pick Region**
+2. Click upper-left → lower-right corners on the preview image
+3. Click **Draw Region** to draw only that area
 
-- Custom Colors tool initialized
-- Color Preview Spot tool initialized
-- Calibration Step Size configured
+## File Management
 
-### Running Calibration
-
-**Steps:**
-1. Configure Custom Colors tool (spectrum area)
-2. Configure Color Preview Spot tool (preview location)
-3. Set **Calibration Step Size** (1-10, default: 2):
-   - Lower = more accurate but slower
-   - Higher = faster but less accurate
-4. Click **"Run Calibration"** button
-5. Wait for calibration to complete
-6. Calibration data saved to `color_calibration.json`
-
-**What Happens During Calibration:**
-1. Bot presses mouse down at spectrum start
-2. Bot drags through entire spectrum
-3. At each step, captures RGB value from Preview Spot
-4. Creates mapping: RGB → (x, y) coordinates
-5. Releases mouse up
-
-### Using Calibrated Colors
-
-During drawing:
-1. Bot first checks calibration map for exact match
-2. If match within tolerance: Uses calibrated position
-3. If no match: Falls back to nearest spectrum color
-4. Calibration data is automatically loaded if `color_calibration.json` exists
-
-## Region-Based Redrawing
-
-Redraw only a specific area of an image without reprocessing the entire image.
-
-### Use Cases
-
-- **Fixing mistakes**: Redraw only the area with errors
-- **Adding details**: Add new elements to existing drawing
-- **Selective updates**: Modify specific regions without affecting others
-
-### Steps
-
-1. Load your image
-2. Click and drag on the image preview to select a region
-3. Click **"Redraw Region"** button
-4. Only the selected area will be drawn
-
-**Selection:**
-- Click upper-left corner, drag to lower-right corner
-- Selected region will be highlighted
-
-## Advanced Features
-
-### New Layer Automation
-
-Automatically create a new layer in your drawing application for each color.
-
-**Setup:**
-1. Click **"Setup"** → Click **"Initialize"** next to New Layer
-2. Click the new layer button location in your application
-3. Configure modifier keys if needed (CTRL, ALT, SHIFT)
-4. Enable **"Enable New Layer"** checkbox in Control Panel
-
-**Behavior:**
-- Before each color change, bot clicks the new layer button
-- Modifier keys are held during the click
-- Waits 0.75 seconds after the click to ensure the layer is ready
-
-### Color Button Automation
-
-Automatically click a color picker button to access custom colors.
-
-**Setup:**
-1. Click **"Setup"** → Click **"Initialize"** next to Color Button
-2. Click the color picker button location in your application
-3. Configure the delay (time to wait after click)
-4. Configure modifier keys if needed (CTRL, ALT, SHIFT)
-5. Enable **"Enable Color Button"** checkbox in Control Panel
-
-**Behavior:**
-- Before each color change, bot clicks the color button
-- Waits the configured delay for the color picker to open
-- Selects color from spectrum or uses keyboard input
-
-### Color Button Okay
-
-Optional confirmation click after color selection.
-
-**Setup:**
-1. Click **"Setup"** → Click **"Initialize"** next to Color Button Okay
-2. Click the confirmation button location in your application
-3. Configure modifier keys if needed (CTRL, ALT, SHIFT)
-4. Enable **"Enable"** checkbox in Control Panel
-
-**Behavior:**
-- After color selection, clicks the confirmation button
-- Waits the configured delay before drawing
+- **Remove Calibration**: Deletes `color_calibration.json`
+- **Reset Config**: Deletes `config.json` (requires restart and re-setup)
 
 ## Keyboard Controls
 
-### Pause Key
+| Key | Action |
+|-----|--------|
+| **ESC** | Emergency stop |
+| **Pause Key** (default 'P') | Pause/resume drawing at exact point |
 
-**Default:** 'p'
+## Settings Reference
 
-**Setting:**
-1. Click in the **Pause Key** entry field in Control Panel
-2. Press any key (a-z, 0-9, function keys)
-3. The key name will be saved
-
-**Behavior:**
-- Press pause key during drawing: Toggle pause/resume
-- Press pause key when not drawing: Set as new pause key
-
-### ESC Key
-
-Global hotkey for emergency stop.
-
-**Behavior:**
-- Pressing ESC during drawing: Stops immediately
-- Pressing ESC during test: Stops test
-- Pressing ESC during setup: Cancels operation
-- Pressing ESC during calibration: Stops calibration
-
-## Tips and Best Practices
-
-### Performance Optimization
-
-1. **Use Pre-compute** for images you'll draw multiple times
-2. **Adjust Pixel Size** based on desired detail vs. speed
-3. **Enable "Ignore White Pixels"** for images with large white areas
-4. **Use Layered Mode** for better visual results on complex images
-5. **Fine-tune Jump Delay** to prevent unintended strokes
-
-### Interactive Palette Extraction
-
-The Interactive Palette Extraction tool provides precise, user-friendly palette configuration with anchor point placement.
-
-**When to Use:**
-- Your palette has irregular spacing between colors
-- You need maximum accuracy for color positioning
-- Auto-estimate or manual centers aren't providing sufficient precision
-- You want to visually verify anchor points before extraction
-
-#### Phase 1: Region Selection
-
-1. Click **"Edit Colors"** → **"Precision Estimate"** in the Setup Window
-2. Read the instructions dialog and click OK
-3. Click the **upper-left corner** of your palette region
-4. Click the **bottom-right corner** of your palette region
-5. The selected area will be captured and displayed in the extraction window
-
-**Tips:**
-- Select a tight region around your palette to maximize accuracy
-- Make sure the entire palette (all colors) is within the selected region
-- The region can include some background, but should be primarily the palette
-
-#### Phase 2: Grid Configuration
-
-1. Enter the **number of rows** in your palette grid
-2. Enter the **number of columns** in your palette grid
-3. Click **"Set Grid"** to proceed
-4. A visual grid overlay will appear on your palette image
-
-**Tips:**
-- Count rows and columns carefully - incorrect values will cause mismatched positions
-- Use "Back to Region" if you need to redefine the selected area
-- Grid lines help verify the structure before placing anchors
-
-#### Phase 3: Anchor Placement
-
-1. Click anywhere on the palette image to place an anchor point
-2. A dialog will appear asking which grid cell this anchor represents
-3. Enter the grid cell number (1 to total cells) to link the anchor
-4. The anchor appears as a green dot with the cell number
-5. Interpolated positions appear as yellow circles
-
-**Anchor Rules:**
-- **Unlimited anchors** - add as many as needed for accuracy
-- Click an existing anchor to remove it
-- Each anchor must be linked to a specific grid cell
-- The system automatically calculates all non-anchor positions
-
-**Workflow:**
-1. Start with minimum anchors (2 for 1D grids, 4 for 2D grids)
-2. View the yellow interpolated positions
-3. Add more anchors in areas where interpolation is inaccurate
-4. Use "Clear Anchors" to start over if needed
-5. Continue until all yellow circles align with actual color centers
-
-**Best Practices:**
-- Place anchors at the most reliable color centers (most stable positions)
-- Add correction anchors along edges first, then interior if needed
-- The minimum required anchors for extraction:
-  - **1D grid (1×n or n×1)**: 2 anchors (first and last)
-  - **2D grid (m×n)**: 4 anchors (4 corners)
-- More anchors = higher accuracy, but diminishing returns
-
-#### Phase 4: Extraction
-
-1. When satisfied with anchor placement, click **"Extract Colors"**
-2. The system will extract center positions for all valid colors
-3. Results are returned to the main palette configuration
-4. Temp file is cleaned up automatically
-
-**Back Navigation:**
-- **"Back to Grid"**: Return to phase 2 to adjust grid dimensions
-- **"Clear Anchors"**: Remove all anchors and start placement over
-
-#### Session Recovery
-
-The tool auto-saves your work to `palette_extraction_temp.json`:
-
-**What's Saved:**
-- Selected region coordinates
-- Grid dimensions
-- All anchor positions
-- All interpolated positions
-
-**Recovery:**
-- If you close the window accidentally, reopen to restore session
-- Choose "Restore" when prompted to continue where you left off
-- All progress is preserved including anchors and calculations
-
-**Cleanup:**
-- Temp file is automatically deleted after successful extraction
-- Manually delete `palette_extraction_temp.json` to start completely fresh
-
-### Palette Setup Tips
-
-1. **Use Auto-Estimate** for quick initial setup on regular grids
-2. **Use Interactive Extraction** for maximum accuracy on irregular palettes
-3. **Toggle Invalid Positions** to exclude broken or unused colors
-4. **Preview captured regions** to verify correct configuration
-5. **For complex palettes**, start with Interactive Extraction for best results
-
-### Color Calibration Tips
-
-1. **Set appropriate step size**: Lower = more accurate, Higher = faster
-2. **Verify Preview Spot**: Ensure it shows the exact selected color
-3. **Check Spectrum Box**: Must cover the entire color spectrum
-4. **Test calibration** with a test draw before starting full drawing
-5. **Reuse calibration**: Data saved to file can be used across sessions
-
-### Color Button Tips
-
-1. **Set appropriate delay** for your application's color picker opening time
-2. **Use modifier keys** if your application requires them to access the color picker
-3. **Enable "Color Button Okay"** if your application requires clicking a confirmation button
-4. **Test color button configuration** with a simple test draw before starting a full drawing
-
-### Drawing Workflow
-
-1. **Load image** → **(Optional) Pre-compute** → **Test Draw** → **Start**
-2. **Monitor progress** via the tooltip panel
-3. **Use pause/resume** to interrupt if needed
-4. **ESC to stop** if something goes wrong
-
-### File Management Section
-
-![Main UI with File Management](images/main-ui.png)
-
-The File Management section provides two buttons for managing configuration files directly from the UI:
-
-#### Remove Calibration Button
-
-**Purpose:** Clear color calibration data to force recalibration or remove outdated data.
-
-**What it Does:**
-- Deletes `color_calibration.json` file
-- Resets bot's calibration map in memory
-
-**When to Use:**
-- Calibration data is outdated or incorrect
-- You want to recalibrate from scratch
-- Calibration was done on different display settings
-
-**Safety:** Confirmation dialog prevents accidental deletion
-
-#### Reset Config Button
-
-**Purpose:** Reset all settings, tools, and preferences to default values.
-
-**What it Does:**
-- Deletes `config.json` file
-- ALL settings are reset to application defaults
-
-**What is Lost:**
-- All tool configurations (Palette, Canvas, Custom Colors, etc.)
-- All drawing settings (Delay, Pixel Size, Precision, Jump Delay)
-- All feature toggles (New Layer, Color Button, MSPaint Mode, etc.)
-- Pause key configuration
-- Last used image URL
-
-**When to Use:**
-- Configuration is corrupted or causing issues
-- You want to start completely fresh
-- Settings are lost and need to reconfigure everything
-
-**Safety:** Warning dialog alerts you that all data will be lost
-
-### Troubleshooting
-
-If you encounter issues:
-
-1. **Drawing not starting**: Ensure palette and canvas are initialized
-2. **Colors incorrect**: Check custom colors setup and precision settings
-3. **Slow performance**: Reduce pixel size or increase delay settings
-4. **Application not responding**: Use ESC to stop and restart
-
-For detailed troubleshooting, see [Troubleshooting Guide](./troubleshooting.md).
-
-## See Also
-
-- [README.md](../README.md)
-- [API Reference](./api.md)
-- [Configuration Guide](./configuration.md)
-- [Architecture](./architecture.md)
-- [Troubleshooting](./troubleshooting.md)
+| Setting | Range | Default | Control |
+|---------|-------|---------|---------|
+| Delay | 0.01-10.0s | 0.1 | Text entry |
+| Pixel Size | 3-50 | 12 | Slider |
+| Precision | 0.0-1.0 | 0.9 | Slider |
+| Jump Delay | 0.0-2.0s | 0.5 | Slider |
+| Jump Threshold | 1-100 | 5 | Text entry |
+| Calibration Step | 1-10 | 2 | Text entry |
+| Path Optimization | on/off | On | Checkbox |

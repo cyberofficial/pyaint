@@ -6,9 +6,11 @@ import traceback
 import urllib.request
 import urllib.error as urllib_error
 import utils
+from utils import resource_path
 
 from ui.setup import SetupWindow
 from ui.palette_window import PaletteWindow
+from ui.single_color_window import SingleColorWindow
 from tkinter import filedialog
 from bot import Bot
 from genericpath import isfile
@@ -90,7 +92,7 @@ class Window:
         self._initializing = True
         # Config path should be available immediately because some widget
         # callbacks trigger during initialization and may attempt to save.
-        self._config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
+        self._config_path = resource_path('config.json')
 
         self._root.title(title)
         # Center the window on screen
@@ -129,9 +131,9 @@ class Window:
         self._ipanel.grid(column=1, row=0, sticky='nsew', padx=5, pady=5)
         
         
-        self._set_img(path='assets/sample.png')
+        self._set_img(path=resource_path('assets/sample.png'))
         # Determine config file path relative to project root (one level up from ui/)
-        self._config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
+        self._config_path = resource_path('config.json')
         self.load_config()  # Load saved config
         # UI initialization finished - allow saving
         self._initializing = False
@@ -201,14 +203,19 @@ class Window:
 
         self._teclbl = Label(self._cframe, text='Draw Mode', font=Window.TITLE_FONT)
         self._teclbl.grid(column=0, row=7, columnspan=2, sticky='w', padx=5, pady=5)
-        modes = [Bot.SLOTTED, Bot.LAYERED]
+        modes = [Bot.SLOTTED, Bot.LAYERED, Bot.SINGLE_COLOR]
         self._tecvar = StringVar()
         self._tecvar.set(modes[1])
         self._mode = modes[1]
         self._teclst = OptionMenu(self._cframe, self._tecvar, self._mode, *modes, command=self._update_mode)
         self._teclst.grid(column=0, row=8, columnspan=2, sticky='ew', padx=5, pady=5)
 
-        curr_row = 9
+        self._single_color_btn = Button(self._cframe, text='Configure Single Color',
+                                         command=self._open_single_color_window)
+        self._single_color_btn.grid(column=0, row=9, columnspan=2, sticky='ew', padx=5, pady=5)
+        self._single_color_btn.grid_remove()
+
+        curr_row = 10
 
         # For every slider option in options, option layout is    :    (name, default, from, to)
         defaults = self.bot.settings
@@ -377,6 +384,7 @@ class Window:
         # Initialize redraw state
         self._redraw_region = None  # Will store (x1, y1, x2, y2) canvas coordinates
         self._redraw_picking = False  # Flag for when we're in region selection mode
+        self._sc_window = None  # Single Color config window reference
 
         return oframe
 
@@ -388,8 +396,31 @@ class Window:
         # Makes the canvas scrollable
         self._canvas.configure(scrollregion=self._canvas.bbox('all'), width=200)
 
+    def _open_single_color_window(self):
+        if hasattr(self, '_sc_window') and self._sc_window is not None and self._sc_window.window.winfo_exists():
+            self._sc_window.window.lift()
+            return
+        if not hasattr(self, '_imname') or not os.path.isfile(self._imname):
+            messagebox.showerror(self.title, "Please load an image first.")
+            self._tecvar.set(self._mode)
+            return
+        self._sc_window = SingleColorWindow(self._root, self.bot, self._imname)
+        # Clean up reference when window closes
+        self._sc_window.window.protocol('WM_DELETE_WINDOW', lambda: self._on_sc_window_close())
+
+    def _on_sc_window_close(self):
+        if hasattr(self, '_sc_window') and self._sc_window is not None:
+            self._sc_window.window.destroy()
+            self._sc_window = None
+
     def _update_mode(self, selection):
         self._mode = selection
+        if selection == Bot.SINGLE_COLOR:
+            self._single_color_btn.grid()
+            if not self.bot.single_color_configured:
+                self._open_single_color_window()
+        else:
+            self._single_color_btn.grid_remove()
 
     def _init_ipanel(self):
         # IMAGE PREVIEW FRAME
@@ -442,7 +473,7 @@ class Window:
         if image is not None:
             img = image
         else:
-            self._imname = path if path is not None else 'assets/sample.png'
+            self._imname = path if path is not None else resource_path('assets/sample.png')
             img = Image.open(self._imname)
 
         # Resize image
@@ -1640,6 +1671,19 @@ class Window:
         self._draw_thread.start()
         self._manage_draw_thread()
 
+    def _process_image(self):
+        """Process the loaded image according to the current draw mode."""
+        if self._mode == Bot.SINGLE_COLOR:
+            if not self.bot.single_color_configured:
+                raise ValueError("Single Color mode not configured. Please configure it first.")
+            return self.bot.process_single_color(
+                self._imname,
+                self.bot.single_color_ignore,
+                self.bot.single_color_tolerance,
+                self.draw_options
+            )
+        return self.bot.process(self._imname, flags=self.draw_options, mode=self._mode)
+
     def _manage_draw_thread(self):
         # Display progress updates every half a second
         if self._draw_thread.is_alive() and self.busy:
@@ -1669,11 +1713,11 @@ class Window:
                 else:
                     # Cache invalid, fall back to processing
                     print("Cache file invalid, processing live...")
-                    cmap = self.bot.process(self._imname, flags=self.draw_options, mode=self._mode)
+                    cmap = self._process_image()
             else:
                 # No cache, process normally
                 print("No cache available, processing live...")
-                cmap = self.bot.process(self._imname, flags=self.draw_options, mode=self._mode)
+                cmap = self._process_image()
 
             # Count total lines and limit to first 20 (or fewer if less available)
             total_lines = sum(len(lines) for lines in cmap.values())
@@ -1694,6 +1738,7 @@ class Window:
                 'was_paused': False
             }
 
+            self.bot.single_color_mode_active = (self._mode == Bot.SINGLE_COLOR)
             result = self.bot.test_draw(cmap, max_lines=test_lines)
             self._root.deiconify()  # type: ignore
             self._root.wm_state('normal')  # type: ignore
@@ -1922,6 +1967,7 @@ class Window:
                 'was_paused': False
             }
 
+            self.bot.single_color_mode_active = (self._mode == Bot.SINGLE_COLOR)
             result = self.bot.draw(cmap)
             self._root.deiconify()
             self._root.wm_state('normal')
@@ -2083,11 +2129,11 @@ class Window:
                 else:
                     # Cache invalid, fall back to processing
                     print("Cache file invalid, processing live...")
-                    cmap = self.bot.process(self._imname, flags=self.draw_options, mode=self._mode)
+                    cmap = self._process_image()
             else:
                 # No cache, process normally
                 print("No cache available, processing live...")
-                cmap = self.bot.process(self._imname, flags=self.draw_options, mode=self._mode)
+                cmap = self._process_image()
 
             # Show drawing time estimate
             drawing_eta = self.bot.estimate_drawing_time(cmap)
@@ -2110,6 +2156,7 @@ class Window:
                 'was_paused': False
             }
 
+            self.bot.single_color_mode_active = (self._mode == Bot.SINGLE_COLOR)
             result = self.bot.draw(cmap)
             self._root.deiconify()  # type: ignore
             self._root.wm_state('normal')  # type: ignore

@@ -99,6 +99,7 @@ class Bot:
     
     SLOTTED = 'slotted'
     LAYERED = 'layered'
+    SINGLE_COLOR = 'single_color'
 
     IGNORE_WHITE = 1 << 0
     USE_CUSTOM_COLORS = 1 << 1
@@ -166,6 +167,12 @@ class Bot:
             'enabled': False,         # whether the feature is active
             'delay': 0.5              # delay between clicks in seconds (default 0.5)
         }
+
+        # Single Color mode state
+        self.single_color_ignore = (255, 255, 255)
+        self.single_color_tolerance = 16
+        self.single_color_configured = False
+        self.single_color_mode_active = False  # Set True during draw to skip palette clicks
 
         # Canvas and palette will be initialized later
         self._canvas = None
@@ -717,6 +724,136 @@ class Bot:
 
         return cmap
 
+    def process_single_color(self, file, ignore_color, tolerance=16, flags=0):
+        """
+        Process image for Single Color mode.
+        Ignores all pixels that match `ignore_color` within `tolerance` (Euclidean distance).
+        Remaining pixels are quantized to the nearest palette/custom color as usual.
+        Returns a cmap dict mapping color -> list of (start, end) stroke segments.
+        """
+        self.terminate = False
+
+        # Apply canvas calibration scale factor
+        scale_factor = self.canvas_calibration.get('scale_factor', 1.0)
+        if scale_factor != 1.0:
+            step = int(round(self.settings[Bot.STEP] * scale_factor))
+            print(f"[CanvasCalibration] Applied calibration scale factor: {scale_factor:.3f}")
+        else:
+            step = int(self.settings[Bot.STEP])
+
+        img = Image.open(file).convert('RGBA')
+
+        try:
+            x, y, cw, ch = self._canvas
+        except:
+            raise NoCanvasError('Bot could not continue because canvas is not initialized')
+
+        tw, th = tuple(int(p // step) for p in utils.adjusted_img_size(img, (cw, ch)))
+        xo = x = x + ((cw - tw * step) // 2)
+        y += ((ch - th * step) // 2)
+
+        try:
+            img_small = img.resize((tw, th), resample=Image.Resampling.NEAREST)
+        except AttributeError:
+            img_small = img.resize((tw, th), resample=Image.NEAREST)
+        pix = img_small.load()
+        w, h = img_small.size
+        size = w * h
+
+        nearest_colors = dict()
+        cmap = dict()
+        interval_size = max((1 - self.settings[Bot.ACCURACY]) * 255, 1)
+        tol_sq = tolerance ** 2
+
+        # Guard against missing palette (only needed when not using custom colors)
+        if not (flags & Bot.USE_CUSTOM_COLORS) and (not hasattr(self, '_palette') or self._palette is None):
+            raise NoPaletteError('Bot could not continue because palette is not initialized')
+
+        old_col = None
+        start = None
+
+        for i in range(h):
+            x = xo
+            for j in range(w):
+                r, g, b = pix[j, i][:3]
+
+                # Skip pixels matching ignore_color within tolerance
+                if Palette.dist((r, g, b), ignore_color) <= tol_sq:
+                    # Flush any stroke in progress
+                    if old_col is not None and start is not None:
+                        end = (x, y)
+                        lines = cmap.get(old_col, [])
+                        lines.append((start, end))
+                        cmap[old_col] = lines
+                    old_col = None
+                    start = None
+                    x += step
+                    continue
+
+                near = (r, g, b)
+                if (r, g, b) not in nearest_colors:
+                    if flags & Bot.USE_CUSTOM_COLORS:
+                        # Quantize via precision, use quantized color directly
+                        col = tuple(int(round(v / interval_size) * interval_size) for v in near)
+                    else:
+                        # Map to nearest palette color
+                        col = self._palette.nearest_color((r, g, b))
+                    nearest_colors[(r, g, b)] = col
+                else:
+                    col = nearest_colors[(r, g, b)]
+
+                # Build strokes (SLOTTED-style: simple row-based segments)
+                if old_col is not None and old_col != col:
+                    end = (x, y)
+                    lines = cmap.get(old_col, [])
+                    lines.append((start, end))
+                    cmap[old_col] = lines
+                    start = (x, y)
+                elif old_col is None:
+                    start = (x, y)
+
+                old_col = col
+                self.progress = 100 * (i * w + (j + 1)) / size
+                x += step
+
+            # Flush last stroke on this row
+            if old_col is not None and start is not None:
+                end = (x, y)
+                lines = cmap.get(old_col, [])
+                lines.append((start, end))
+                cmap[old_col] = lines
+                old_col = None
+                start = None
+
+            x = xo
+            y += step
+
+        return cmap
+
+    def generate_single_color_preview(self, file, ignore_color, tolerance=16):
+        """
+        Generate a preview image highlighting which pixels will be drawn.
+        Pixels matching ignore_color (within tolerance) become transparent.
+        Drawn pixels are rendered in red for visibility.
+        """
+        img = Image.open(file).convert('RGBA')
+        w, h = img.size
+        pix = img.load()
+        tol_sq = tolerance ** 2
+
+        out = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+        out_pix = out.load()
+
+        for y in range(h):
+            for x in range(w):
+                r, g, b, a = pix[x, y]
+                if Palette.dist((r, g, b), ignore_color) <= tol_sq:
+                    out_pix[x, y] = (0, 0, 0, 0)
+                else:
+                    out_pix[x, y] = (255, 0, 0, 180)
+
+        return out
+
     def draw(self, cmap):
         '''
         Draws the image as per the coordinates of the processed cmap table.
@@ -756,7 +893,8 @@ class Bot:
 
         for color_idx, (c, lines) in enumerate(cmap.items()):
             # Skip the first color if skip_first_color is enabled
-            if color_idx == 0 and self.skip_first_color:
+            # (but never skip in Single Color mode — background is already filtered)
+            if color_idx == 0 and self.skip_first_color and not self.single_color_mode_active:
                 print(f"[Skip First Color] Skipping first color: {c}")
                 continue
 
@@ -777,7 +915,7 @@ class Bot:
             # Skip on first color when skip_first_color is enabled
             try:
                 nl = self.new_layer
-                if nl.get('enabled') and nl.get('coords') and not (color_idx == 0 and self.skip_first_color):
+                if nl.get('enabled') and nl.get('coords') and not self.single_color_mode_active and not (color_idx == 0 and self.skip_first_color):
                     nx, ny = nl['coords']
                     print(f"[NewLayer] attempting click at {(nx, ny)} with mods={nl.get('modifiers')}")
 
@@ -840,7 +978,7 @@ class Bot:
             # If Color Button Mode is enabled, click the color button with modifiers before palette selection
             try:
                 cb = self.color_button
-                if cb.get('enabled') and cb.get('coords'):
+                if not self.single_color_mode_active and cb.get('enabled') and cb.get('coords'):
                     cx, cy = cb['coords']
                     print(f"[ColorButton] attempting click at {(cx, cy)} with mods={cb.get('modifiers')}, delay={cb.get('delay')}")
 
@@ -905,9 +1043,9 @@ class Bot:
             print(f"[DEBUG] Color Button Okay enabled: {self.color_button_okay.get('enabled', False)}")
             print(f"[DEBUG] Custom colors box: {self._custom_colors}")
             
-            # Only perform automatic color selection if Color Button Okay is NOT enabled
-            # When Color Button Okay is enabled, user is expected to manually select=color
-            if not self.color_button_okay.get('enabled', False):
+            # Only perform automatic color selection if NOT in Single Color mode
+            # In Single Color mode, the user picks their brush color manually
+            if not self.single_color_mode_active and not self.color_button_okay.get('enabled', False):
                 # Check if palette exists and color is in palette before accessing it
                 if self._palette is not None and c in self._palette.colors:
                     px, py = self._palette.colors_pos[c]
@@ -971,7 +1109,7 @@ class Bot:
                             pyautogui.PAUSE = 0.0
                         else:
                             print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
-            else:
+            elif not self.single_color_mode_active and self.color_button_okay.get('enabled', False):
                 # Color Button Okay is enabled, but we still need to select color in spectrum before clicking okay
                 print(f"[DEBUG] Color Button Okay enabled - selecting color in spectrum before clicking okay")
                 
@@ -1031,7 +1169,7 @@ class Bot:
             # If Color Button Okay Mode is enabled, click "Set Okay" button after color selection
             try:
                 cbo = self.color_button_okay
-                if cbo.get('enabled') and cbo.get('coords'):
+                if not self.single_color_mode_active and cbo.get('enabled') and cbo.get('coords'):
                     cx, cy = cbo['coords']
                     print(f"[ColorButtonOkay] attempting click at {(cx, cy)} with mods={cbo.get('modifiers')}")
 
@@ -1155,6 +1293,7 @@ class Bot:
                 if self.terminate:
                     pyautogui.mouseUp()
                     self.drawing = False  # Clear drawing flag on termination
+                    self.single_color_mode_active = False  # Reset single color mode flag
                     self.close_progress_overlay()  # Close overlay on termination
                     return 'terminated'
 
@@ -1203,6 +1342,7 @@ class Bot:
                     self.draw_state['current_color'] = c  # Save current color
                     if self.terminate:
                         self.close_progress_overlay()  # Close overlay on termination
+                        self.single_color_mode_active = False
                         return 'terminated'
                     # Wait for resume
                     print("Paused after completing stroke - press resume to continue")
@@ -1210,6 +1350,7 @@ class Bot:
                         time.sleep(0.1)
                     if self.terminate:
                         self.close_progress_overlay()  # Close overlay on termination
+                        self.single_color_mode_active = False
                         return 'terminated'
                     # Resume - replay the current stroke to ensure clean result
                     print(f"Resuming - replaying current stroke for color {c}")
@@ -1242,6 +1383,7 @@ class Bot:
         
         # Reset draw state on successful completion
         self.drawing = False  # Clear drawing flag
+        self.single_color_mode_active = False  # Reset single color mode flag
         self.draw_state['color_idx'] = 0
         self.draw_state['line_idx'] = 0
         self.draw_state['segment_idx'] = 0
@@ -1289,7 +1431,7 @@ class Bot:
 
             # Only perform automatic color selection if Color Button Okay is NOT enabled
             # When Color Button Okay is enabled, user is expected to manually select the color
-            if not self.color_button_okay.get('enabled', False):
+            if not self.single_color_mode_active and not self.color_button_okay.get('enabled', False):
                 # Check if palette exists and color is in palette before accessing it
                 if self._palette is not None and c in self._palette.colors:
                     px, py = self._palette.colors_pos[c]
@@ -1351,7 +1493,7 @@ class Bot:
                             print(f"[DEBUG] Color calibration file exists - skipping keyboard input method")
 
             # Only click okay button if Color Button Okay is enabled
-            if self.color_button_okay.get('enabled', False):
+            if not self.single_color_mode_active and self.color_button_okay.get('enabled', False):
                 # Click to Color Button Okay button to confirm color selection
                 try:
                     cbo = self.color_button_okay
@@ -1429,6 +1571,7 @@ class Bot:
                 if self.terminate:
                     pyautogui.mouseUp()
                     self.drawing = False  # Clear drawing flag on termination
+                    self.single_color_mode_active = False
                     self.close_progress_overlay()  # Close overlay on termination
                     return 'terminated'
 
@@ -1467,6 +1610,7 @@ class Bot:
         self.close_progress_overlay()
         
         self.drawing = False  # Clear drawing flag
+        self.single_color_mode_active = False
         return 'success'
 
     def get_cache_filename(self, image_path, flags=0, mode=LAYERED):
@@ -1574,7 +1718,12 @@ class Bot:
         start_time = time.time()
 
         # Process the image
-        cmap = self.process(image_path, flags, mode)
+        if mode == Bot.SINGLE_COLOR:
+            if not self.single_color_configured:
+                raise ValueError("Single Color mode not configured. Please configure it first.")
+            cmap = self.process_single_color(image_path, self.single_color_ignore, self.single_color_tolerance, flags)
+        else:
+            cmap = self.process(image_path, flags, mode)
 
         # Prepare cache data - convert tuple keys to strings for JSON serialization
         cmap_json = {str(k): v for k, v in cmap.items()}
@@ -1662,6 +1811,21 @@ class Bot:
         # Crop the image to the specified region
         x1, y1, x2, y2 = region
         img_cropped = img.crop((x1, y1, x2, y2))
+
+        # For Single Color mode, delegate to process_single_color via temp file
+        if mode == Bot.SINGLE_COLOR:
+            if not self.single_color_configured:
+                raise ValueError("Single Color mode not configured. Please configure it first.")
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
+            tmp_name = tmp.name
+            tmp.close()
+            img_cropped.save(tmp_name, format='PNG')
+            try:
+                cmap = self.process_single_color(tmp_name, self.single_color_ignore, self.single_color_tolerance, flags)
+            finally:
+                os.unlink(tmp_name)
+            return cmap
 
         try:
             canvas_x, canvas_y, canvas_w, canvas_h = self._canvas  # type: ignore[union-attr]

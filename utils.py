@@ -1,3 +1,18 @@
+import os
+import sys
+
+
+def resource_path(relative_path):
+    """Get absolute path to a resource, works for dev and for PyInstaller builds."""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # In development, resolve relative to this file's directory (project root)
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+
 def adjusted_img_size(img, ad):
     '''
     Recalculates the width and height of an image to fit within a given space.

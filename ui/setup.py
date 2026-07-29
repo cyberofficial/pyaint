@@ -277,7 +277,11 @@ class SetupWindow:
     def _set_preview(self, name):
         self._current_tool = self.tools[name]
         try:
-            self._img = Image.open(self.tools[name]['preview'])
+            preview_path = self.tools[name].get('preview')
+            if preview_path:
+                self._img = Image.open(utils.resource_path(preview_path))
+            else:
+                raise FileNotFoundError
             self._img = ImageTk.PhotoImage(self._img.resize(
                 utils.adjusted_img_size(self._img, (self._preview_panel.winfo_width() - 10, self._preview_panel.winfo_height() - 10))
             ))
@@ -295,7 +299,7 @@ class SetupWindow:
                 self.rows = int(self._erows.get())
                 self.cols = int(self._ecols.get())
             except:
-                messagebox.showerror(self.title, 'Please enter valid values for rows and columns before initializing your palette!')
+                messagebox.showerror(self.title, 'Please enter valid values for rows and columns before initializing your palette!', parent=self._root)
                 return
 
         self._coords = []
@@ -306,7 +310,7 @@ class SetupWindow:
         self._required_clicks = 1 if self._tool_name in ('New Layer', 'Color Button', 'Color Button Okay', 'color_preview_spot') else 2
         
         prompt = 'Click the location of the button.' if self._required_clicks == 1 else 'Click on the UPPER LEFT and LOWER RIGHT corners of the tool.'
-        if messagebox.askokcancel(self.title, prompt) == True:
+        if messagebox.askokcancel(self.title, prompt, parent=self._root) == True:
             self._listener = Listener(on_click=self._on_click)
             self._listener.start()
             self._root.iconify()
@@ -318,12 +322,12 @@ class SetupWindow:
         self._tool_name = name
         
         if self._tool_name != 'Palette':
-            messagebox.showerror(self.title, 'Manual color selection is only available for Palette!')
+            messagebox.showerror(self.title, 'Manual color selection is only available for Palette!', parent=self._root)
             return
         
         # Check if palette has been captured
         if not tool.get('box'):
-            messagebox.showerror(self.title, 'Please initialize the palette first (click Initialize)!')
+            messagebox.showerror(self.title, 'Please initialize the palette first (click Initialize)!', parent=self._root)
             return
         
         self.rows = tool['rows']
@@ -427,7 +431,7 @@ class SetupWindow:
         
         # Load palette preview image
         try:
-            palette_img = Image.open(self._current_tool['preview'])
+            palette_img = Image.open(utils.resource_path(self._current_tool['preview']))
             self._palette_img_pil = palette_img  # Store PIL image for resizing
             
             # Extract colors from palette image for each grid cell
@@ -666,7 +670,7 @@ class SetupWindow:
     def _set_pick_centers_mode(self):
         """Set mode to pick exact center points for each color"""
         if not self._valid_positions:
-            messagebox.showwarning(self.title, 'Please mark at least one color as valid first!')
+            messagebox.showwarning(self.title, 'Please mark at least one color as valid first!', parent=self._root)
             return
         
         self._pick_centers_mode = True
@@ -689,7 +693,7 @@ class SetupWindow:
     def _pick_center(self, index):
         """Pick a center point for a specific color cell"""
         if index not in self._valid_positions:
-            messagebox.showwarning(self.title, 'Cannot pick center for invalid cell!')
+            messagebox.showwarning(self.title, 'Cannot pick center for invalid cell!', parent=self._root)
             return
         
         # Wait for mouse click to get center coordinates
@@ -732,7 +736,7 @@ class SetupWindow:
     def _auto_estimate_centers(self):
         """Automatically estimate centers for all valid colors"""
         if not self._valid_positions:
-            messagebox.showwarning(self.title, 'Please mark at least one color as valid first!')
+            messagebox.showwarning(self.title, 'Please mark at least one color as valid first!', parent=self._root)
             return
         
         # Calculate cell dimensions
@@ -857,11 +861,12 @@ class SetupWindow:
         
         # Show info dialog after overlay closes
         self._root.after(5100, lambda: messagebox.showinfo(
-            self.title, 
+            self.title,
             f'Auto-estimated centers for {len(self._manual_centers)} valid colors!\n\n'
             f'Red circles showed estimated positions on your palette.\n'
             f'Yellow cells in the grid show estimated centers.\n\n'
-            f'You can still manually adjust by clicking "Pick Centers" to pick specific centers.'
+            f'You can still manually adjust by clicking "Pick Centers" to pick specific centers.',
+            parent=self._root
         ))
     
     def _show_custom_centers_overlay(self):
@@ -869,7 +874,7 @@ class SetupWindow:
         from tkinter import Toplevel, Canvas
         
         if not self._manual_centers:
-            messagebox.showwarning(self.title, 'No custom centers to show! Please pick centers first using "Pick Centers" mode.')
+            messagebox.showwarning(self.title, 'No custom centers to show! Please pick centers first using "Pick Centers" mode.', parent=self._root)
             return
         
         # Create overlay window positioned exactly over palette
@@ -917,11 +922,12 @@ class SetupWindow:
         
         # Show info dialog after overlay closes
         self._root.after(5100, lambda: messagebox.showinfo(
-            self.title, 
+            self.title,
             f'Displaying {len(self._manual_centers)} custom centers!\n\n'
             f'Blue circles showed your manually picked positions on your palette.\n'
             f'Yellow cells in the grid show custom centers.\n\n'
-            f'You can adjust centers by clicking "Pick Centers" to pick specific centers.'
+            f'You can adjust centers by clicking "Pick Centers" to pick specific centers.',
+            parent=self._root
         ))
     
     def _on_escape_press(self, event):
@@ -977,14 +983,15 @@ class SetupWindow:
                     except:
                         pass
                     self._color_sel_window.deiconify()
-                    messagebox.showinfo(self.title, 'All valid colors have been assigned centers!\n\nClick "Done" to save or adjust centers.')
+                    messagebox.showinfo(self.title, 'All valid colors have been assigned centers!\n\nClick "Done" to save or adjust centers.', parent=self._root)
     
     def _on_color_selection_done(self):
         """Handle completion of manual color selection"""
         if not self._valid_positions:
             messagebox.showwarning(
                 self.title,
-                'You must select at least one valid color!'
+                'You must select at least one valid color!',
+                parent=self._root
             )
             return
         
@@ -1016,11 +1023,12 @@ class SetupWindow:
             
             messagebox.showinfo(
                 self.title,
-                f'Palette updated with {len(self._valid_positions)} valid colors out of {self.rows * self.cols} total positions.'
+                f'Palette updated with {len(self._valid_positions)} valid colors out of {self.rows * self.cols} total positions.',
+                parent=self._root
             )
             
         except Exception as e:
-            messagebox.showerror(self.title, f'Error updating palette: {str(e)}')
+            messagebox.showerror(self.title, f'Error updating palette: {str(e)}', parent=self._root)
         
         # Close the selection window
         self._color_sel_window.destroy()
@@ -1187,14 +1195,14 @@ class SetupWindow:
     def _start_canvas_calibration(self, name, tool):
         """Start canvas calibration process"""
         if not tool.get('box'):
-            messagebox.showerror(self.title, 'Please initialize Canvas first (click Initialize button)!')
+            messagebox.showerror(self.title, 'Please initialize Canvas first (click Initialize button)!', parent=self._root)
             return
         
         # Check if canvas is initialized
         try:
             canvas_x, canvas_y, canvas_w, canvas_h = self.bot._canvas
         except:
-            messagebox.showerror(self.title, 'Please initialize Canvas first (click Initialize button)!')
+            messagebox.showerror(self.title, 'Please initialize Canvas first (click Initialize button)!', parent=self._root)
             return
         
         # Get user's brush size from paint application
@@ -1204,7 +1212,8 @@ class SetupWindow:
             prompt='Enter the brush size (in pixels) you have selected in your paint application:',
             initialvalue=tool.get('user_brush_size', 10),
             minvalue=1,
-            maxvalue=999
+            maxvalue=999,
+            parent=self._root
         )
         
         if brush_size_str is None:
@@ -1231,7 +1240,8 @@ class SetupWindow:
             '  OXOXO\n'
             '  OOXOO\n'
             '  OXOXO\n'
-            '  XOOOX'
+            '  XOOOX',
+            parent=self._root
         )
         
         if not result:
@@ -1296,7 +1306,7 @@ class SetupWindow:
             self.parent.wm_state('normal')
         
         if calibration_results is None:
-            messagebox.showerror(self.title, 'Canvas calibration failed!')
+            messagebox.showerror(self.title, 'Canvas calibration failed!', parent=self._root)
             return
         
         # Show results dialog
@@ -1330,7 +1340,8 @@ class SetupWindow:
         
         result = messagebox.askokcancel(
             'Canvas Calibration Results',
-            results_text
+            results_text,
+            parent=self._root
         )
         
         if result:  # User clicked OK
@@ -1492,7 +1503,8 @@ class InteractivePaletteExtractor:
             '1. Click the UPPER-LEFT corner of your palette\n'
             '2. Click the BOTTOM-RIGHT corner of your palette\n\n'
             'The selected area will be captured and displayed.\n\n'
-            'Click OK to begin, then click the corners on your palette.'
+            'Click OK to begin, then click the corners on your palette.',
+            parent=self._root
         )
         
         if not result:
@@ -1588,7 +1600,7 @@ class InteractivePaletteExtractor:
             self._display_offset = (x_offset, y_offset)
             
         except Exception as e:
-            messagebox.showerror('Capture Error', f'Failed to capture palette: {str(e)}')
+            messagebox.showerror('Capture Error', f'Failed to capture palette: {str(e)}', parent=self._root)
     
     def _start_phase_2(self):
         """Start phase 2: Grid configuration"""
@@ -1602,7 +1614,7 @@ class InteractivePaletteExtractor:
             cols = int(self._cols_entry.get())
             
             if rows < 1 or cols < 1:
-                messagebox.showerror('Invalid Grid', 'Rows and columns must be at least 1')
+                messagebox.showerror('Invalid Grid', 'Rows and columns must be at least 1', parent=self._root)
                 return
             
             self._rows = rows
@@ -1613,7 +1625,7 @@ class InteractivePaletteExtractor:
             self._start_phase_3()
             
         except ValueError:
-            messagebox.showerror('Invalid Input', 'Please enter valid numbers for rows and columns')
+            messagebox.showerror('Invalid Input', 'Please enter valid numbers for rows and columns', parent=self._root)
     
     def _start_phase_3(self):
         """Start phase 3: Anchor placement"""
@@ -1718,7 +1730,8 @@ class InteractivePaletteExtractor:
                 f'You clicked at grid position {clicked_idx + 1}.\n\n'
                 f'Enter the grid cell number (1-{self._rows * self._cols})\n'
                 f'to place this anchor point at.\n\n'
-                f'Leave empty to cancel.'
+                f'Leave empty to cancel.',
+                parent=self._root
             )
             
             if not result:
@@ -1730,7 +1743,8 @@ class InteractivePaletteExtractor:
                 if target_idx < 0 or target_idx >= self._rows * self._cols:
                     messagebox.showerror(
                         'Invalid Grid Cell',
-                        f'Grid cell must be between 1 and {self._rows * self._cols}'
+                        f'Grid cell must be between 1 and {self._rows * self._cols}',
+                        parent=self._root
                     )
                     return
                 
@@ -1741,7 +1755,8 @@ class InteractivePaletteExtractor:
             except ValueError:
                 messagebox.showerror(
                     'Invalid Input',
-                    'Please enter a valid number for the grid cell.'
+                    'Please enter a valid number for the grid cell.',
+                    parent=self._root
                 )
                 return
         
@@ -1850,8 +1865,9 @@ class InteractivePaletteExtractor:
     
     def _clear_anchors(self):
         """Clear all anchor points"""
-        if messagebox.askyesno('Clear Anchors', 
-                'Clear all anchor points? This cannot be undone.'):
+        if messagebox.askyesno('Clear Anchors',
+                'Clear all anchor points? This cannot be undone.',
+                parent=self._root):
             self._anchors = {}
             self._interpolated = {}
             self._draw_palette_with_grid()
@@ -1875,9 +1891,10 @@ class InteractivePaletteExtractor:
         """Extract colors and complete"""
         required_anchors = self._get_required_anchors()
         if len(self._anchors) < required_anchors:
-            messagebox.showerror('Insufficient Anchors', 
+            messagebox.showerror('Insufficient Anchors',
                 f'Need at least {required_anchors} anchor points. '
-                f'Currently have {len(self._anchors)}.')
+                f'Currently have {len(self._anchors)}.',
+                parent=self._root)
             return
         
         # Combine anchors and interpolated points
@@ -1929,8 +1946,9 @@ class InteractivePaletteExtractor:
         """Try to restore state from temp file"""
         try:
             if os.path.exists(self.TEMP_FILE):
-                if messagebox.askyesno('Restore Session', 
-                        'Found saved extraction session. Restore it?'):
+                if messagebox.askyesno('Restore Session',
+                        'Found saved extraction session. Restore it?',
+                        parent=self._root):
                     with open(self.TEMP_FILE, 'r') as f:
                         state = json.load(f)
                     

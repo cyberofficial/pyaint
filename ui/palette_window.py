@@ -271,7 +271,7 @@ class PaletteWindow:
         except Exception as e:
             # Hide progress on error
             self.progress_frame.pack_forget()
-            messagebox.showerror("Error", f"Failed to update palette: {e}")
+            messagebox.showerror("Error", f"Failed to update palette: {e}", parent=self.window)
     
     def _draw_color_swatches(self):
         """Draw color swatches on preview canvas."""
@@ -466,7 +466,7 @@ class PaletteWindow:
             self._update_info()
             tie_window.destroy()
             
-            messagebox.showinfo("Success", "Ties resolved! Palette updated.")
+            messagebox.showinfo("Success", "Ties resolved! Palette updated.", parent=self.window)
         
         ttk.Button(button_frame, text="Apply", command=apply_resolution).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Cancel", command=tie_window.destroy).pack(side=tk.RIGHT)
@@ -478,7 +478,7 @@ class PaletteWindow:
     def _export_palette(self):
         """Export palette to GIMP CSS file."""
         if not self.colors:
-            messagebox.showwarning("Warning", "No colors to export")
+            messagebox.showwarning("Warning", "No colors to export", parent=self.window)
             return
         
         # Ask for save location
@@ -495,6 +495,6 @@ class PaletteWindow:
         success = self.generator.export_gimp_css(self.colors, file_path)
         
         if success:
-            messagebox.showinfo("Success", f"Palette exported to:\n{file_path}")
+            messagebox.showinfo("Success", f"Palette exported to:\n{file_path}", parent=self.window)
         else:
-            messagebox.showerror("Error", "Failed to export palette")
+            messagebox.showerror("Error", "Failed to export palette", parent=self.window)

@@ -311,6 +311,14 @@ class Window:
         self._skip_first_color_cb.grid(column=1, row=curr_row, padx=5, pady=5, sticky='w')
         curr_row += 1
 
+        # Path Optimization option
+        Label(self._cframe, text='Path Optimization', font=Window.TITLE_FONT).grid(column=0, row=curr_row, padx=5, pady=5, sticky='w')
+        self._path_opt_var = IntVar(value=1)
+        self._path_opt_cb = Checkbutton(self._cframe, text='Minimize cursor jumps', variable=self._path_opt_var,
+            command=self._on_path_opt_toggle)
+        self._path_opt_cb.grid(column=1, row=curr_row, padx=5, pady=5, sticky='w')
+        curr_row += 1
+
         # MSPaint Mode option
         Label(self._cframe, text='MSPaint Mode', font=Window.TITLE_FONT).grid(column=0, row=curr_row, padx=5, pady=5, sticky='w')
         self._mspaint_mode_var = IntVar()
@@ -654,6 +662,17 @@ class Window:
                 with open(self._config_path, 'w', encoding='utf-8') as f:
                     json.dump(self.tools, f, ensure_ascii=False, indent=4)
                 print(f"Saved config to {self._config_path}; keys={list(self.tools.keys())}")
+        except Exception as e:
+            print(f"Failed to save config: {e}")
+
+    def _on_path_opt_toggle(self):
+        enabled = bool(self._path_opt_var.get())
+        self.bot.path_optimization = enabled
+        self.tools['path_optimization'] = enabled
+        try:
+            if not getattr(self, '_initializing', False):
+                with open(self._config_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.tools, f, ensure_ascii=False, indent=4)
         except Exception as e:
             print(f"Failed to save config: {e}")
 
@@ -1094,6 +1113,13 @@ class Window:
             self._skip_first_color_var.set(1 if self.bot.skip_first_color else 0)
         except Exception:
             pass
+
+        # Apply Path Optimization setting to bot if present
+        try:
+            self.bot.path_optimization = bool(self.tools.get('path_optimization', 1))
+            self._path_opt_var.set(1 if self.bot.path_optimization else 0)
+        except Exception:
+            self._path_opt_var.set(1)
 
         # Apply MSPaint Mode settings to bot if present
         try:
@@ -1673,6 +1699,7 @@ class Window:
 
     def _process_image(self):
         """Process the loaded image according to the current draw mode."""
+        self.bot._cached_path_optimization = False  # Reset; live processing re-optimizes
         if self._mode == Bot.SINGLE_COLOR:
             if not self.bot.single_color_configured:
                 raise ValueError("Single Color mode not configured. Please configure it first.")
@@ -1702,6 +1729,7 @@ class Window:
                 cache_data = self.bot.load_cached(cache_file)
                 if cache_data:
                     cmap = cache_data['cmap']
+                    self.bot._cached_path_optimization = cache_data.get('path_optimization', False)
                     # Log cache details
                     num_colors = len(cmap)
                     total_points = sum(len(lines) for lines in cmap.values())
@@ -2118,6 +2146,7 @@ class Window:
                 cache_data = self.bot.load_cached(cache_file)
                 if cache_data:
                     cmap = cache_data['cmap']
+                    self.bot._cached_path_optimization = cache_data.get('path_optimization', False)
                     # Log cache details
                     num_colors = len(cmap)
                     total_points = sum(len(lines) for lines in cmap.values())

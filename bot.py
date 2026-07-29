@@ -174,6 +174,9 @@ class Bot:
         self.single_color_configured = False
         self.single_color_mode_active = False  # Set True during draw to skip palette clicks
 
+        # Path optimization — reorder strokes to minimize cursor jumps
+        self.path_optimization = True
+
         # Canvas and palette will be initialized later
         self._canvas = None
         self._palette = None
@@ -854,6 +857,84 @@ class Bot:
 
         return out
 
+    def optimize_stroke_order(self, cmap):
+        """
+        Reorder strokes within each color group using a greedy nearest-neighbor approach.
+        Each stroke starts near where the previous one ended, minimizing cursor jump distances
+        and producing a more natural drawing flow.
+        Returns a new cmap with optimized stroke ordering.
+        """
+        # Count total strokes for progress tracking
+        total_strokes = sum(len(lines) for lines in cmap.values())
+        if total_strokes <= 1:
+            return cmap
+
+        print(f"[PathOpt] Optimizing stroke order for {total_strokes} strokes across {len(cmap)} colors...")
+        optimized = {}
+        large_jumps = 0
+        processed = 0
+        last_log_pct = -1
+
+        for color, lines in cmap.items():
+            if not lines:
+                optimized[color] = []
+                continue
+
+            remaining = list(lines)  # copy
+            ordered = [remaining.pop(0)]
+            last_end = ordered[0][1]  # end point of the last ordered stroke
+            processed += 1
+
+            while remaining:
+                # Progress update every 5% or 500 strokes
+                pct = int(processed * 100 / total_strokes)
+                if pct >= last_log_pct + 5 or processed % 500 == 0:
+                    last_log_pct = pct
+                    self.progress = pct
+                    print(f"[PathOpt] {pct}% ({processed}/{total_strokes})")
+
+                # Find the nearest stroke (by start or end) to last_end
+                best_idx = 0
+                best_dist = float('inf')
+                best_reversed = False
+
+                for i, (start, end) in enumerate(remaining):
+                    # Distance from last_end to this stroke's start
+                    d_start = ((last_end[0] - start[0]) ** 2 + (last_end[1] - start[1]) ** 2)
+                    # Distance from last_end to this stroke's end (if reversed)
+                    d_end = ((last_end[0] - end[0]) ** 2 + (last_end[1] - end[1]) ** 2)
+
+                    if d_start < best_dist:
+                        best_dist = d_start
+                        best_idx = i
+                        best_reversed = False
+                    if d_end < d_start and d_end < best_dist:
+                        best_dist = d_end
+                        best_idx = i
+                        best_reversed = True
+
+                # Pop the best candidate
+                stroke = remaining.pop(best_idx)
+                if best_reversed:
+                    stroke = (stroke[1], stroke[0])  # swap start/end
+                ordered.append(stroke)
+
+                # Track jump distance for diagnostics
+                jump = int(math.sqrt(best_dist))
+                if jump > 5:
+                    large_jumps += 1
+                processed += 1
+                last_end = stroke[1]
+
+            optimized[color] = ordered
+
+        self.progress = 100
+        if large_jumps > 0:
+            print(f"[PathOpt] Done: {large_jumps} large jumps remain out of {total_strokes} strokes")
+        else:
+            print(f"[PathOpt] Done: {total_strokes} strokes optimized, no large jumps")
+        return optimized
+
     def draw(self, cmap):
         '''
         Draws the image as per the coordinates of the processed cmap table.
@@ -887,6 +968,9 @@ class Bot:
         self.paused = False
         self.drawing = True  # Mark as actively drawing
         last_stroke_end = None  # Track last stroke position for jump detection
+        # Optimize stroke order for more natural drawing flow (do before time estimate)
+        if self.path_optimization and not getattr(self, '_cached_path_optimization', False):
+            cmap = self.optimize_stroke_order(cmap)
         self.estimated_time_seconds = self._estimate_drawing_time_seconds(cmap)
         estimated_str = self._format_time(self.estimated_time_seconds)
         print(f"Estimated drawing time: {estimated_str}")
@@ -1416,6 +1500,10 @@ class Bot:
         if self.overlay_window:
             self.update_progress_overlay(0, min(max_lines, sum(len(lines) for lines in cmap.values())), 0)
 
+        # Optimize stroke order for more natural drawing flow
+        if self.path_optimization and not getattr(self, '_cached_path_optimization', False):
+            cmap = self.optimize_stroke_order(cmap)
+
         # Estimate time for the full cmap (not just test lines)
         self.estimated_time_seconds = self._estimate_drawing_time_seconds(cmap)
         estimated_str = self._format_time(self.estimated_time_seconds)
@@ -1725,6 +1813,12 @@ class Bot:
         else:
             cmap = self.process(image_path, flags, mode)
 
+        # Optimize stroke order before caching if enabled
+        path_optimized = self.path_optimization
+        if path_optimized:
+            cmap = self.optimize_stroke_order(cmap)
+            print("[PathOpt] Stroke order optimized and cached")
+
         # Prepare cache data - convert tuple keys to strings for JSON serialization
         cmap_json = {str(k): v for k, v in cmap.items()}
         cache_data = {
@@ -1732,6 +1826,7 @@ class Bot:
             'settings': self.settings.copy(),
             'flags': flags,
             'mode': mode,
+            'path_optimization': path_optimized,  # Track whether cmap was pre-optimized
             'canvas': self._canvas,
             'image_hash': hashlib.md5(open(image_path, 'rb').read()).hexdigest()[:8],
             'timestamp': time.time(),

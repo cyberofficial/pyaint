@@ -141,7 +141,8 @@ class Window:
 
         # Apply saved tool configs to bot state
         for tool_name in ('Palette', 'Canvas', 'Custom Colors', 'New Layer',
-                          'Color Button', 'Color Button Okay', 'Color Picker', 'MSPaint Mode'):
+                          'Color Button', 'Color Button Okay', 'Color Picker',
+                          'color_preview_spot', 'MSPaint Mode'):
             self.bot.apply_tool_config(tool_name, self.tools.get(tool_name, {}))
 
         self._settings.refresh_from_bot()
@@ -250,7 +251,8 @@ class Window:
 
         # Apply tool configs to bot state
         for tool_name in ('Palette', 'Canvas', 'Custom Colors', 'New Layer',
-                          'Color Button', 'Color Button Okay', 'Color Picker', 'MSPaint Mode'):
+                          'Color Button', 'Color Button Okay', 'Color Picker',
+                          'color_preview_spot', 'MSPaint Mode'):
             self.bot.apply_tool_config(tool_name, self.tools.get(tool_name, {}))
 
         # Sync feature-toggle checkboxes with the new bot state

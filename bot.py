@@ -178,6 +178,9 @@ class Bot:
         # file' at draw start; cleared when the draw finishes/stops). Not
         # persisted to config.
         self.loaded_palette = None
+        # Paint app's color preview spot (where the selected color is shown);
+        # used to verify the dropper pick actually changed the color.
+        self.color_preview_spot = {'coords': None}
 
         # Single Color mode state
         self.single_color_ignore = (255, 255, 255)
@@ -364,10 +367,146 @@ class Bot:
             elif name == 'Custom Colors':
                 if data.get('box'):
                     self.init_custom_colors(data['box'])
+            elif name == 'color_preview_spot':
+                coords = data.get('coords')
+                if isinstance(coords, list) and len(coords) >= 2:
+                    self.color_preview_spot = {'coords': (int(coords[0]), int(coords[1]))}
+                elif isinstance(coords, tuple):
+                    self.color_preview_spot = {'coords': (int(coords[0]), int(coords[1]))}
             else:
                 print(f"apply_tool_config: unknown tool '{name}'")
         except Exception as e:
             print(f"Failed to apply tool config '{name}': {e}")
+
+    @staticmethod
+    def _colors_close(c1, c2, tolerance=10):
+        """True when two RGB triplets are within tolerance per channel."""
+        if c1 is None or c2 is None:
+            return False
+        return all(abs(a - b) <= tolerance for a, b in zip(c1, c2))
+
+    def _read_preview_spot_color(self, spot_xy):
+        """Read the paint app's current color at the preview spot (5x5 avg)."""
+        try:
+            x, y = spot_xy
+            region = pyautogui.screenshot(region=(max(0, x - 2), max(0, y - 2), 5, 5))
+            pixels = list(region.getdata())
+            n = len(pixels)
+            return (sum(p[0] for p in pixels) // n,
+                    sum(p[1] for p in pixels) // n,
+                    sum(p[2] for p in pixels) // n)
+        except Exception as e:
+            print(f"[ColorPicker] Error reading preview spot at {spot_xy}: {e}")
+            return None
+
+    def _show_stuck_alert(self):
+        """Alert that the paint app's color has not changed (bot is paused).
+
+        The dialog is marshaled to the Tk main thread via ``root.after`` —
+        messagebox and Tcl calls are not thread-safe, so the bot worker thread
+        never touches Tk directly (no cross-thread ``winfo_exists`` checks).
+        """
+        import tkinter as tk
+        try:
+            root = getattr(self, '_tk_root', None)
+            if root is None:
+                root = getattr(tk, '_default_root', None)
+                self._tk_root = root
+            if root is not None:
+                # Schedule on the main thread; a destroyed root raises
+                # TclError here, caught below, and the job stays paused with
+                # the console message as fallback.
+                root.after(0, self._alert_dialog)
+            else:
+                self._alert_dialog()
+        except Exception as e:
+            print(f"[ColorPicker] Could not show stuck alert: {e}")
+
+    def _alert_dialog(self):
+        from tkinter import messagebox
+        try:
+            messagebox.showwarning(
+                'Pyaint - Color Picker Stuck',
+                'The paint program color has not been able to change in 30 tries.\n'
+                'Your application may be stuck.\n\n'
+                f'Once it is unstuck, press "{self.pause_key}" to resume.')
+        except Exception as e:
+            print(f"[ColorPicker] Could not show stuck alert: {e}")
+
+    def _pick_color_with_dropper(self, c, dropper_xy, spot_xy, max_attempts=30):
+        """Click the app's dropper + color swatch, then verify the preview spot
+        color actually matches the target.
+
+        Retries every 1 second; after ``max_attempts`` failures the job pauses
+        and a stuck alert is shown, then retrying resumes once the user presses
+        the pause key (or ESC aborts).
+
+        Args:
+            c: target RGB tuple shown in the swatch
+            dropper_xy: (x, y) location of the app's dropper button
+            spot_xy: (x, y) color preview spot to verify, or None to skip
+            max_attempts: retry budget before pausing (default 30)
+
+        Returns:
+            True on success (or when verification is unavailable),
+            'terminated' when ESC was pressed mid-retry.
+        """
+        attempts = 0
+        while not self.terminate:
+            # Honor manual pauses during retries too (same as the draw loops)
+            while self.paused and not self.terminate:
+                time.sleep(0.5)
+            if self.terminate:
+                break
+            before = self._read_preview_spot_color(spot_xy) if spot_xy else None
+            try:
+                pyautogui.click(dropper_xy)
+                time.sleep(0.2)
+                pos = self._find_swatch_position(dropper_xy)
+                self.show_color_swatch(c, pos)
+                time.sleep(0.15)
+                cx = pos[0] + self.SWATCH_SIZE // 2
+                cy = pos[1] + self.SWATCH_SIZE // 2
+                pyautogui.click((cx, cy))
+                time.sleep(0.2)
+            finally:
+                # Never leave the topmost swatch stuck on screen
+                self.hide_color_swatch()
+
+            after = self._read_preview_spot_color(spot_xy) if spot_xy else None
+            if spot_xy is None:
+                # No preview spot configured: cannot verify, assume success.
+                return True
+            if after is None:
+                # Spot configured but unreadable (off-screen?): warn and assume
+                # success so an unverifiable spot never blocks the draw.
+                print(f"[ColorPicker] Preview spot at {spot_xy} unreadable; skipping verification")
+                return True
+            if before is None:
+                # Transient before-read failure: retry instead of false success.
+                print("[ColorPicker] Preview spot before-read failed; retrying")
+            elif self._colors_close(after, c) or self._colors_close(before, c):
+                # The app's color now matches the target (or already did).
+                print(f"[ColorPicker] Color confirmed ({after}) (attempt {attempts + 1})")
+                return True
+
+            attempts += 1
+            if attempts >= max_attempts:
+                # Stuck: pause the job and alert; keep retrying once resumed.
+                self.paused = True
+                print(f"[ColorPicker] Preview color did not change after "
+                      f"{max_attempts} attempts; pausing")
+                self._show_stuck_alert()
+                while self.paused and not self.terminate:
+                    time.sleep(0.5)
+                attempts = 0  # fresh retry budget after the user resumes
+            else:
+                time.sleep(1.0)
+                print(f"[ColorPicker] Color did not match (attempt "
+                      f"{attempts}/{max_attempts}); retrying in 1s")
+        # ESC pressed: make sure the next draw does not start paused.
+        self.paused = False
+        return 'terminated'
 
     def set_loaded_palette(self, path):
         """Load a palette file into temp memory for Color Picker mode.
@@ -1353,19 +1492,11 @@ class Bot:
                 if self.color_picker.get('enabled') and self.color_picker.get('coords'):
                     dx, dy = self.color_picker['coords']
                     print(f"[ColorPicker] Picking color {c} via dropper at {(dx, dy)}")
-                    try:
-                        pyautogui.click((dx, dy))
-                        time.sleep(0.2)
-                        pos = self._find_swatch_position((dx, dy))
-                        self.show_color_swatch(c, pos)
-                        time.sleep(0.15)
-                        cx = pos[0] + self.SWATCH_SIZE // 2
-                        cy = pos[1] + self.SWATCH_SIZE // 2
-                        pyautogui.click((cx, cy))
-                        time.sleep(0.2)
-                    finally:
-                        # Never leave the topmost swatch stuck on screen
-                        self.hide_color_swatch()
+                    spot = getattr(self, 'color_preview_spot', None)
+                    spot_xy = spot.get('coords') if isinstance(spot, dict) else None
+                    result = self._pick_color_with_dropper(c, (dx, dy), spot_xy)
+                    if result == 'terminated':
+                        print("[ColorPicker] Color pick aborted (terminated)")
                     delay = self.color_button.get('delay', 0.1)
                     print(f"[ColorPicker] waiting {delay} seconds after color pick...")
                     time.sleep(delay)
@@ -1773,19 +1904,11 @@ class Bot:
                 if self.color_picker.get('enabled') and self.color_picker.get('coords'):
                     dx, dy = self.color_picker['coords']
                     print(f"[ColorPicker] Picking color {c} via dropper at {(dx, dy)}")
-                    try:
-                        pyautogui.click((dx, dy))
-                        time.sleep(0.2)
-                        pos = self._find_swatch_position((dx, dy))
-                        self.show_color_swatch(c, pos)
-                        time.sleep(0.15)
-                        cx = pos[0] + self.SWATCH_SIZE // 2
-                        cy = pos[1] + self.SWATCH_SIZE // 2
-                        pyautogui.click((cx, cy))
-                        time.sleep(0.2)
-                    finally:
-                        # Never leave the topmost swatch stuck on screen
-                        self.hide_color_swatch()
+                    spot = getattr(self, 'color_preview_spot', None)
+                    spot_xy = spot.get('coords') if isinstance(spot, dict) else None
+                    result = self._pick_color_with_dropper(c, (dx, dy), spot_xy)
+                    if result == 'terminated':
+                        print("[ColorPicker] Color pick aborted (terminated)")
                     delay = self.color_button.get('delay', 0.1)
                     time.sleep(delay)
                 # Check if palette exists and color is in palette before accessing it

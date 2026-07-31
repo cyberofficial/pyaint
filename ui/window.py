@@ -2,7 +2,7 @@ import os
 import time
 import tkinter
 import traceback
-from tkinter import Tk, messagebox
+from tkinter import Tk, filedialog, messagebox
 from tkinter import ttk
 
 from PIL import Image
@@ -620,6 +620,36 @@ class Window:
             messagebox.showerror(self.title, "Color Picker tool not configured. Please run Setup first.")
             self._set_busy(False)
             return
+
+        # Color Picker Mode: offer loading a palette file before the main draw.
+        # (Main draw only — Test Draw / Simple Test Draw never prompt.)
+        if self.draw_options & Bot.USE_COLOR_PICKER:
+            choice = messagebox.askyesnocancel(
+                self.title,
+                'Color Picker Mode\n\n'
+                'Use the eye dropper with EXACT image colors\n'
+                '(one dropper cycle per color)?\n\n'
+                '  Yes   = eye dropper only\n'
+                '  No    = load a palette file and map image colors to it first\n'
+                '  Cancel = abort this draw')
+            if choice is None:
+                self._set_busy(False)
+                return
+            if not choice:
+                path = filedialog.askopenfilename(
+                    parent=self._root,
+                    title='Load Color Palette',
+                    filetypes=[('Palette files', '*.gpl *.css *.txt *.hex'), ('All Files', '*.*')])
+                if not path:
+                    self._set_busy(False)
+                    return
+                try:
+                    self.bot.set_loaded_palette(path)
+                except Exception as e:
+                    messagebox.showerror(self.title, f'Failed to load palette: {e}')
+                    self._set_busy(False)
+                    return
+
         self._threads.start(ThreadJob(
             name='draw',
             target=self.start,
@@ -1033,6 +1063,10 @@ class Window:
         except Exception as e:
             traceback.print_exc()
             messagebox.showerror(self.title, str(e))
+        finally:
+            # Clear the temp-memory Color Picker palette when the draw ends
+            # (success, terminated, paused, or error) — the next Start asks again.
+            self.bot.clear_loaded_palette()
 
         # Let the thread manager know that the task has ended
         self._set_busy(False)

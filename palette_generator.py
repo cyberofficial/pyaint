@@ -12,6 +12,80 @@ import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
+def load_palette_file(path: str) -> List[Tuple[int, int, int]]:
+    """
+    Load a palette from a file into a list of (r, g, b) tuples.
+
+    Supported formats (malformed lines are skipped):
+    - GIMP ``.gpl``: lines starting with digits ``R G B Name``
+    - GIMP CSS ``.css``: ``rgb(r, g, b)`` values, ``.N { color: rgb(...); }``
+      (the format exported by :meth:`ColorPaletteGenerator.export_gimp_css`),
+      and ``/* RGB(r, g, b) */`` comment lines
+    - Simple ``#RRGGBB`` hex lines
+
+    Args:
+        path: Path to the palette file
+
+    Returns:
+        List of (r, g, b) tuples
+
+    Raises:
+        ValueError: if the file contains no parseable colors
+    """
+    colors: List[Tuple[int, int, int]] = []
+    with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        for line in f:
+            line = line.strip()
+            # GIMP CSS comment: /* RGB(r, g, b) */
+            if '/*' in line and 'RGB(' in line:
+                try:
+                    rgb_part = line[line.index('RGB('):line.index(')') + 1]
+                    parts = rgb_part[4:-1].split(',')
+                    r, g, b = int(parts[0].strip()), int(parts[1].strip()), int(parts[2].strip())
+                    colors.append((r, g, b))
+                except (ValueError, IndexError):
+                    pass
+            # CSS rgb() format: rgb(r, g, b) or .N { color: rgb(r, g, b); }
+            elif 'rgb(' in line:
+                try:
+                    start = line.index('rgb(') + 4
+                    end = line.index(')', start)
+                    parts = line[start:end].split(',')
+                    if len(parts) == 3:
+                        r = int(parts[0].strip())
+                        g = int(parts[1].strip())
+                        b = int(parts[2].strip())
+                        colors.append((r, g, b))
+                except (ValueError, IndexError):
+                    pass
+            # GIMP .gpl: R G B Name
+            elif line and line[0].isdigit():
+                try:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        r, g, b = int(parts[0]), int(parts[1]), int(parts[2])
+                        colors.append((r, g, b))
+                except (ValueError, IndexError):
+                    pass
+            # Simple hex
+            elif line.startswith('#') and len(line) >= 7:
+                try:
+                    r, g, b = int(line[1:3], 16), int(line[3:5], 16), int(line[5:7], 16)
+                    colors.append((r, g, b))
+                except ValueError:
+                    pass
+
+    if not colors:
+        raise ValueError(f'No colors found in palette file: {path}')
+    # Clamp out-of-range components (e.g. rgb(999,0,0) or -5) into 0-255 so
+    # malformed values can never produce wrong swatch colors.
+    clamped = [(max(0, min(r, 255)), max(0, min(g, 255)), max(0, min(b, 255)))
+               for r, g, b in colors]
+    # Deduplicate (preserving order) and cap the palette size so a huge or
+    # malicious file cannot exhaust memory or slow nearest-color lookups.
+    return list(dict.fromkeys(clamped))[:4096]
+
+
 class ColorPaletteGenerator:
     """Generates color palettes from images with multiple selection algorithms."""
     
@@ -29,9 +103,22 @@ class ColorPaletteGenerator:
         self.total_pixels = 0
         self.sorted_colors = []
         self.algorithm = "frequency"  # Default algorithm
+
+        # K-Means warm-start state: when the iteration count increases, reuse
+        # the previous run's final centroids instead of restarting from scratch.
+        self._kmeans_centroids = None
+        self._kmeans_iterations_used = 0
+        self._kmeans_num_colors = 0
+        self._kmeans_running = False
         
     def analyze_image(self):
         """Analyze the image and count color frequencies."""
+        # K-Means warm-start state belongs to a specific image's analysis;
+        # reset it when re-analyzing so a different image never seeds from
+        # the previous image's centroids.
+        self._kmeans_centroids = None
+        self._kmeans_iterations_used = 0
+        self._kmeans_num_colors = 0
         try:
             img = Image.open(self.image_path).convert('RGB')
             pixels = img.load()
@@ -132,7 +219,7 @@ class ColorPaletteGenerator:
         
         return groups
     
-    def get_palette(self, num_colors: int, algorithm: str = "frequency", progress_callback=None) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]:
+    def get_palette(self, num_colors: int, algorithm: str = "frequency", progress_callback=None, kmeans_iterations: int = 20) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]:
         """
         Get top N colors from image using specified algorithm.
         
@@ -140,6 +227,8 @@ class ColorPaletteGenerator:
             num_colors: Number of colors to return (1-256)
             algorithm: Selection algorithm ('frequency', 'dominant_shades', 'rare_shades', 'kmeans')
             progress_callback: Optional callback function(progress_percent) for K-Means progress
+            kmeans_iterations: Max iterations for the K-Means algorithm (default 20;
+                lower = faster, higher = slower but more refined clusters)
         
         Returns:
             Tuple of:
@@ -161,7 +250,15 @@ class ColorPaletteGenerator:
         elif algorithm == "rare_shades":
             return self._get_by_rare_shades(num_colors)
         elif algorithm == "kmeans":
-            return self._get_by_kmeans(num_colors)
+            # Defense-in-depth: the UI guards preview re-entry, but a nested
+            # call here would tear the shared warm-start state. Fail loudly.
+            if getattr(self, '_kmeans_running', False):
+                raise RuntimeError('K-Means is already running (re-entrant call)')
+            self._kmeans_running = True
+            try:
+                return self._get_by_kmeans(num_colors, max_iterations=kmeans_iterations)
+            finally:
+                self._kmeans_running = False
         else:
             return self._get_by_frequency(num_colors)
     
@@ -315,7 +412,7 @@ class ColorPaletteGenerator:
             print(f"[PaletteGen] Failed to export: {e}")
             return False
     
-    def _get_by_kmeans(self, num_colors: int) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]:
+    def _get_by_kmeans(self, num_colors: int, max_iterations: int = 20) -> Tuple[List[Tuple[int, int, int]], List[int], Dict[int, int]]:
         """
         Get palette using K-Means clustering algorithm (multi-threaded).
         
@@ -324,6 +421,7 @@ class ColorPaletteGenerator:
         
         Args:
             num_colors: Number of clusters (1-256)
+            max_iterations: Maximum number of K-Means iterations (default 20)
         
         Returns:
             Tuple of:
@@ -358,27 +456,40 @@ class ColorPaletteGenerator:
             self.progress_callback(10)  # Data prepared
         print(f"[PaletteGen] Progress: 10% - Data prepared and weighted sampling complete")
         
-        # Initialize centroids using k-means++ initialization
-        centroids = self._kmeans_plus_plus_init(data, num_colors)
-        
-        # Report progress
-        if self.progress_callback:
-            self.progress_callback(15)  # Centroids initialized
-        print(f"[PaletteGen] Progress: 15% - Centroids initialized (K-Means++)")
+        # Initialize centroids using k-means++ initialization, OR warm start:
+        # if the previous run used fewer iterations with the same cluster
+        # count, continue from its final centroids instead of restarting.
+        warm_start = (self._kmeans_centroids is not None
+                      and max_iterations > self._kmeans_iterations_used
+                      and num_colors == self._kmeans_num_colors)
+        if warm_start:
+            centroids = list(self._kmeans_centroids)
+            base_iterations = self._kmeans_iterations_used
+            print(f"[PaletteGen] Warm start: continuing from {base_iterations} "
+                  f"iterations (+{max_iterations - base_iterations} more)")
+        else:
+            centroids = self._kmeans_plus_plus_init(data, num_colors)
+            base_iterations = 0
+            # Report progress
+            if self.progress_callback:
+                self.progress_callback(15)  # Centroids initialized
+            print(f"[PaletteGen] Progress: 15% - Centroids initialized (K-Means++)")
         
         # Determine number of threads to use
         num_threads = min(4, max(1, num_colors))  # Use up to 4 threads
         
         # Run K-Means iterations
         self._current_centroids = centroids  # Store for thread access
-        max_iterations = 20
         iteration_start_progress = 15
         iteration_end_progress = 90
+        iterations_run = 0
         
-        for iteration in range(max_iterations):
-            # Calculate progress for this iteration
-            iteration_progress = iteration_start_progress + (iteration / max_iterations) * (iteration_end_progress - iteration_start_progress)
-            print(f"[PaletteGen] Progress: {int(iteration_progress)}% - Iteration {iteration + 1}/{max_iterations}")
+        for iteration in range(max_iterations - base_iterations):
+            iterations_run += 1
+            # Calculate progress for this iteration (relative to the TOTAL
+            # iterations so a warm start shows its accumulated progress)
+            iteration_progress = iteration_start_progress + ((base_iterations + iteration) / max_iterations) * (iteration_end_progress - iteration_start_progress)
+            print(f"[PaletteGen] Progress: {int(iteration_progress)}% - Iteration {base_iterations + iteration + 1}/{max_iterations}")
             
             # Assign each point to nearest centroid (parallelized)
             clusters = [[] for _ in range(num_colors)]
@@ -438,6 +549,13 @@ class ColorPaletteGenerator:
             # Report progress after each iteration
             if self.progress_callback:
                 self.progress_callback(int(iteration_progress))
+
+        # Store state for the next warm start (fresh runs overwrite it too).
+        # Store the ACTUAL iterations consumed so an early convergence break
+        # still allows later higher-but-sufficient requests to warm start.
+        self._kmeans_centroids = list(centroids)
+        self._kmeans_iterations_used = base_iterations + iterations_run
+        self._kmeans_num_colors = num_colors
         
         # Report progress - starting count calculation
         if self.progress_callback:

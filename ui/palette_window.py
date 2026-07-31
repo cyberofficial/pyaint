@@ -143,6 +143,28 @@ class PaletteWindow:
             value="kmeans",
             command=self._on_algorithm_change
         ).pack(side=tk.LEFT, padx=2)
+
+        # K-Means iteration count (number box, default 20)
+        self.kmeans_iterations_var = tk.IntVar(value=20)
+        ttk.Label(algo_radio_frame, text="Iterations:").pack(side=tk.LEFT, padx=(6, 2))
+        self.kmeans_iterations_spin = ttk.Spinbox(
+            algo_radio_frame,
+            from_=1,
+            to=100,
+            width=4,
+            textvariable=self.kmeans_iterations_var,
+            command=self._on_algorithm_change  # re-run preview on arrow clicks
+        )
+        self.kmeans_iterations_spin.pack(side=tk.LEFT, padx=2)
+        self.kmeans_iterations_spin.bind('<Return>', self._on_algorithm_change)
+        self.kmeans_iterations_spin.bind('<FocusOut>', self._on_algorithm_change)
+        self.kmeans_iterations_hint = ttk.Label(
+            algo_radio_frame,
+            text="(lower = faster, higher = slower)",
+            foreground="gray",
+            font=("Arial", 8)
+        )
+        self.kmeans_iterations_hint.pack(side=tk.LEFT, padx=4)
         
         # Warning label for K-Means
         self.kmeans_warning_label = ttk.Label(
@@ -219,8 +241,16 @@ class PaletteWindow:
         # Focus on size entry
         self.size_entry.focus_set()
     
-    def _update_palette_preview(self):
+    def _update_palette_preview(self, event=None):
         """Update palette preview based on current size and algorithm."""
+        # Re-entrancy guard: progress_callback calls self.window.update(),
+        # which processes queued spinbox/radio events mid-run. A nested
+        # preview would tear the shared generator state (K-Means warm start
+        # looping). Skip re-entrant calls; the running preview finishes and
+        # the next user event re-triggers a fresh one.
+        if getattr(self, '_preview_running', False):
+            return
+        self._preview_running = True
         try:
             # Get palette size from entry
             size = self.size_var.get()
@@ -252,7 +282,13 @@ class PaletteWindow:
                 self.window.update()  # Force UI update
             
             # Get palette from generator with selected algorithm
-            self.colors, self.counts, _ = self.generator.get_palette(size, self.current_algorithm, progress_callback)
+            try:
+                kmeans_iters = int(self.kmeans_iterations_var.get())
+            except (ValueError, TypeError, tk.TclError):
+                kmeans_iters = 20
+            kmeans_iters = max(1, min(100, kmeans_iters))
+            self.colors, self.counts, _ = self.generator.get_palette(
+                size, self.current_algorithm, progress_callback, kmeans_iterations=kmeans_iters)
             
             # Hide progress after completion
             self.progress_frame.pack_forget()
@@ -268,10 +304,18 @@ class PaletteWindow:
             # Update resolve button state
             self.resolve_btn.config(state=tk.NORMAL if ties else tk.DISABLED)
             
-        except Exception as e:
+        except BaseException as e:
+            # Clear the guard FIRST so nothing in this handler (pack_forget,
+            # the error dialog) can ever wedge it, and cover KeyboardInterrupt
+            # / SystemExit from CPU-bound K-Means runs too.
+            self._preview_running = False
             # Hide progress on error
             self.progress_frame.pack_forget()
+            if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                raise
             messagebox.showerror("Error", f"Failed to update palette: {e}", parent=self.window)
+            return
+        self._preview_running = False
     
     def _draw_color_swatches(self):
         """Draw color swatches on preview canvas."""

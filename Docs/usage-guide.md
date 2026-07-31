@@ -62,6 +62,20 @@ For line art and images where background removal is needed:
 
 **Note**: In Single Color mode, the bot skips all palette clicking, Color Button clicks, and New Layer clicks. The `skip_first_color` setting is also bypassed. Set your brush color in your drawing app before starting.
 
+## Color Picker Mode
+
+Uses the paint app's eye dropper (GIMP-style) to feed colors into the app:
+
+1. In Setup, initialize **Color Picker** by clicking the dropper button location once
+2. Check **Use Color Picker** in the Settings tab (mutually exclusive with **Use custom colors**)
+3. Click **Start** — pyaint asks:
+   - **Yes** = eye dropper only: exact image colors, one dropper + color-window cycle per color
+   - **No** = load a palette file (`.gpl` / `.css` / hex lines): image colors are mapped to the nearest palette color and only those are fed through the dropper — the paint app's own palette panel is never touched
+   - **Cancel** = abort the draw
+4. The loaded palette lives in temp memory and is cleared when the drawing finishes or stops, so the next Start asks again
+
+Test Draw and Simple Test Draw never prompt — they always use exact colors.
+
 ## Path Optimization
 
 Toggle **Minimize cursor jumps** in the Settings tab. When enabled:

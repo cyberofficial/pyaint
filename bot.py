@@ -174,6 +174,10 @@ class Bot:
             'enabled': False,   # whether the feature is active
             'coords': None,     # [x, y] location of the dropper button in the paint app
         }
+        # Temp-memory palette for Color Picker mode (loaded via 'load palette
+        # file' at draw start; cleared when the draw finishes/stops). Not
+        # persisted to config.
+        self.loaded_palette = None
 
         # Single Color mode state
         self.single_color_ignore = (255, 255, 255)
@@ -364,7 +368,24 @@ class Bot:
                 print(f"apply_tool_config: unknown tool '{name}'")
         except Exception as e:
             print(f"Failed to apply tool config '{name}': {e}")
-    
+
+    def set_loaded_palette(self, path):
+        """Load a palette file into temp memory for Color Picker mode.
+
+        Args:
+            path: Path to the palette file (.gpl / .css / hex lines)
+
+        Raises:
+            ValueError: if the file contains no parseable colors
+        """
+        from palette_generator import load_palette_file
+        self.loaded_palette = load_palette_file(path)
+        print(f"[ColorPicker] Loaded {len(self.loaded_palette)} colors from palette: {path}")
+
+    def clear_loaded_palette(self):
+        """Clear the temp-memory palette (called when a draw finishes/stops)."""
+        self.loaded_palette = None
+
     def _scan_spectrum(self, ccbox):
         """
         Scan the custom colors spectrum to create a color-to-position map.
@@ -786,8 +807,13 @@ class Bot:
                 # Deciding what to do with new RGB triplet
                 if (r, g, b) not in nearest_colors:
                     if flags & Bot.USE_COLOR_PICKER:
-                        # 1:1 — the eye dropper picks the exact image color
-                        col = (r, g, b)
+                        if self.loaded_palette:
+                            # Map to the nearest loaded-palette color so only
+                            # palette colors are fed through the eye dropper
+                            col = min(self.loaded_palette, key=lambda p: Palette.dist(p, (r, g, b)))
+                        else:
+                            # 1:1 — the eye dropper picks the exact image color
+                            col = (r, g, b)
                     elif flags & Bot.USE_CUSTOM_COLORS:
                         # # Find the nearest custom color previously used, if any
                         # if len(cmap.keys()) > 0:
@@ -938,8 +964,13 @@ class Bot:
                 near = (r, g, b)
                 if (r, g, b) not in nearest_colors:
                     if flags & Bot.USE_COLOR_PICKER:
-                        # 1:1 — the eye dropper picks the exact image color
-                        col = (r, g, b)
+                        if self.loaded_palette:
+                            # Map to the nearest loaded-palette color so only
+                            # palette colors are fed through the eye dropper
+                            col = min(self.loaded_palette, key=lambda p: Palette.dist(p, (r, g, b)))
+                        else:
+                            # 1:1 — the eye dropper picks the exact image color
+                            col = (r, g, b)
                     elif flags & Bot.USE_CUSTOM_COLORS:
                         # Quantize via precision, use quantized color directly
                         col = tuple(min(int(round(v / interval_size) * interval_size), 255) for v in near)
@@ -1952,6 +1983,11 @@ class Bot:
             return None
 
         settings_str = f"{self.settings}_{flags}_{mode}_{canvas_info}"
+        # A loaded Color Picker palette changes the color mapping, so it must
+        # be part of the cache key (precomputed caches are always palette-less).
+        if self.loaded_palette:
+            pal_hash = hashlib.sha256(str(sorted(self.loaded_palette)).encode()).hexdigest()[:16]
+            settings_str += f"_pal_{pal_hash}"
         settings_hash = hashlib.md5(settings_str.encode()).hexdigest()[:8]
 
         # Create cache directory if it doesn't exist
@@ -2239,8 +2275,13 @@ class Bot:
                 # Deciding what to do with new RGB triplet
                 if (r, g, b) not in nearest_colors:
                     if flags & Bot.USE_COLOR_PICKER:
-                        # 1:1 — the eye dropper picks the exact image color
-                        col = (r, g, b)
+                        if self.loaded_palette:
+                            # Map to the nearest loaded-palette color so only
+                            # palette colors are fed through the eye dropper
+                            col = min(self.loaded_palette, key=lambda p: Palette.dist(p, (r, g, b)))
+                        else:
+                            # 1:1 — the eye dropper picks the exact image color
+                            col = (r, g, b)
                     elif flags & Bot.USE_CUSTOM_COLORS:
                         # Obtain the closest color
                         # round(color_component / interval_size) * interval_size

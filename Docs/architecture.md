@@ -32,6 +32,8 @@ Contains `Palette` and `Bot` classes.
 - `single_color_*`: Single Color mode state (ignore color, tolerance, configured flag, mode_active flag)
 - `mspaint_mode`: double-click toggle
 - `color_button` / `color_button_okay`: optional tool click config
+- `color_picker`: Color Picker (eye dropper) mode — `enabled` gate + dropper button coords
+- `loaded_palette`: temp-memory palette list for Color Picker mode (loaded via "load palette file" at draw start; cleared when the draw finishes/stops; never persisted)
 - Canvas calibration and color calibration state
 
 **Key Methods:**
@@ -85,7 +87,7 @@ Contains `Palette` and `Bot` classes.
 - Rare Shades (least dominant per hue group)
 - K-Means (multi-threaded clustering)
 
-Exports to GIMP-compatible CSS.
+Exports to GIMP-compatible CSS. Also provides `load_palette_file(path)` — parses GIMP `.gpl`, GIMP CSS `rgb(...)`, and `#RRGGBB` hex palette files into an RGB list; used by Color Picker mode's "load palette file" option.
 
 ### `ui/window.py` — Main GUI
 

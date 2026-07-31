@@ -180,6 +180,10 @@ class Bot:
         # Wait After Draw — use stroke duration as jump delay instead of fixed time
         self.wait_after_draw = False
 
+        # Color Flattening — remap source colors to target palette colors
+        self.color_remap_entries = []  # list of ((source_rgb, tolerance), target_rgb)
+        self.color_remap_enabled = False
+
         # Canvas and palette will be initialized later
         self._canvas = None
         self._palette = None
@@ -560,6 +564,14 @@ class Bot:
         # Sort by distance and get k nearest neighbors
         color_distances.sort(key=lambda x: x[0])
         neighbors = color_distances[:k_neighbors]
+        nearest_dist = neighbors[0][0]
+        nearest_color = neighbors[0][1]
+        nearest_pos = neighbors[0][2]
+        
+        # If the nearest match is very far, just use it directly (interpolation would be garbage)
+        if nearest_dist > 50:
+            print(f"[Calibration] Target: {target_rgb}, Nearest: {nearest_color} (dist={nearest_dist:.1f}) — too far, using nearest directly")
+            return nearest_pos
         
         # Calculate inverse distance weights (closer colors have more influence)
         # Add a small epsilon to prevent division by zero
@@ -653,6 +665,13 @@ class Bot:
                 r, g, b = pix[j, i][:3]
                 col = near = (r, g, b)
 
+                # Apply color flattening remap if enabled
+                if self.color_remap_enabled:
+                    remapped = self.apply_color_remap((r, g, b))
+                    if remapped != (r, g, b):
+                        r, g, b = remapped
+                        col = near = remapped
+
                 # DESIGNATING COLOR OF THE CURRENT PIXEL
                 # Deciding what to do with new RGB triplet
                 if (r, g, b) not in nearest_colors:
@@ -666,7 +685,7 @@ class Bot:
 
                         # Obtain the closest color
                         # round(color_component / interval_size) * interval_size
-                        col = tuple(int(round(v / interval_size) * interval_size) for v in col)
+                        col = tuple(min(int(round(v / interval_size) * interval_size), 255) for v in col)
                     else:
                         # Find the nearest color from the palette
                         col = self._palette.nearest_color((r, g, b))
@@ -783,6 +802,12 @@ class Bot:
             for j in range(w):
                 r, g, b = pix[j, i][:3]
 
+                # Apply color flattening remap if enabled
+                if self.color_remap_enabled:
+                    remapped = self.apply_color_remap((r, g, b))
+                    if remapped != (r, g, b):
+                        r, g, b = remapped
+
                 # Skip pixels matching ignore_color within tolerance
                 if Palette.dist((r, g, b), ignore_color) <= tol_sq:
                     # Flush any stroke in progress
@@ -800,7 +825,7 @@ class Bot:
                 if (r, g, b) not in nearest_colors:
                     if flags & Bot.USE_CUSTOM_COLORS:
                         # Quantize via precision, use quantized color directly
-                        col = tuple(int(round(v / interval_size) * interval_size) for v in near)
+                        col = tuple(min(int(round(v / interval_size) * interval_size), 255) for v in near)
                     else:
                         # Map to nearest palette color
                         col = self._palette.nearest_color((r, g, b))
@@ -858,6 +883,47 @@ class Bot:
                 else:
                     out_pix[x, y] = (255, 0, 0, 180)
 
+        return out
+
+    def apply_color_remap(self, pixel_rgb):
+        """Return the flattened target color if pixel matches any remap entry, else original."""
+        if not self.color_remap_enabled or not self.color_remap_entries:
+            return pixel_rgb
+        min_dist = float('inf')
+        best_target = None
+        for (source, tolerance), target in self.color_remap_entries:
+            dist = Palette.dist(pixel_rgb, source)
+            if dist <= tolerance ** 2 and dist < min_dist:
+                min_dist = dist
+                best_target = target
+        return best_target if best_target is not None else pixel_rgb
+
+    def extract_image_colors(self, file):
+        """Scan image and return list of (color, frequency) sorted by frequency descending."""
+        img = Image.open(file).convert('RGB')
+        small = img.resize((64, 64), Image.NEAREST)  # Fast scan at 64x64
+        pix = small.load()
+        freq = {}
+        for y in range(64):
+            for x in range(64):
+                c = pix[x, y]
+                freq[c] = freq.get(c, 0) + 1
+        return sorted(freq.items(), key=lambda x: x[1], reverse=True)
+
+    def generate_layer_overlay(self, file, target_color, flatness):
+        """Generate a semi-transparent overlay showing where target_color will draw.
+        Drawn pixels are colored; ignored pixels are transparent."""
+        img = Image.open(file).convert('RGBA')
+        w, h = img.size
+        pix = img.load()
+        tol_sq = flatness ** 2
+        out = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+        out_pix = out.load()
+        for y in range(h):
+            for x in range(w):
+                r, g, b = pix[x, y][:3]
+                if Palette.dist((r, g, b), target_color) <= tol_sq:
+                    out_pix[x, y] = (target_color[0], target_color[1], target_color[2], 180)
         return out
 
     def optimize_stroke_order(self, cmap):
@@ -2007,7 +2073,7 @@ class Bot:
                     if flags & Bot.USE_CUSTOM_COLORS:
                         # Obtain the closest color
                         # round(color_component / interval_size) * interval_size
-                        col = tuple(int(round(v / interval_size) * interval_size) for v in col)
+                        col = tuple(min(int(round(v / interval_size) * interval_size), 255) for v in col)
                     else:
                         # Find the nearest color from the palette
                         col = self._palette.nearest_color((r, g, b))

@@ -138,6 +138,7 @@ class SingleColorWindow:
 
     def _draw_current_image(self):
         """Draw the base image (with overlay if preview is active) at current canvas dimensions."""
+        self._canvas.delete("all")  # Clear previous image to prevent stacking
         if self._pending_preview:
             # Draw with red overlay
             try:

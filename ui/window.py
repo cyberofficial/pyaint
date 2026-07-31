@@ -184,6 +184,7 @@ class Window:
             'Simple Test Draw',
             'Run Calibration',
             'Generate Palette',
+            'Interactive Mode',
             'Start'
         ]
 
@@ -199,23 +200,24 @@ class Window:
         buttons[3]['command'] = self.start_simple_test_draw_thread
         buttons[4]['command'] = self.start_calibration_thread
         buttons[5]['command'] = self.start_palette_window
-        buttons[6]['command'] = self.start_draw_thread
+        buttons[6]['command'] = self.start_interactive_mode
+        buttons[7]['command'] = self.start_draw_thread
 
         self._teclbl = Label(self._cframe, text='Draw Mode', font=Window.TITLE_FONT)
-        self._teclbl.grid(column=0, row=7, columnspan=2, sticky='w', padx=5, pady=5)
+        self._teclbl.grid(column=0, row=8, columnspan=2, sticky='w', padx=5, pady=5)
         modes = [Bot.SLOTTED, Bot.LAYERED, Bot.SINGLE_COLOR]
         self._tecvar = StringVar()
         self._tecvar.set(modes[1])
         self._mode = modes[1]
         self._teclst = OptionMenu(self._cframe, self._tecvar, self._mode, *modes, command=self._update_mode)
-        self._teclst.grid(column=0, row=8, columnspan=2, sticky='ew', padx=5, pady=5)
+        self._teclst.grid(column=0, row=9, columnspan=2, sticky='ew', padx=5, pady=5)
 
         self._single_color_btn = Button(self._cframe, text='Configure Single Color',
                                          command=self._open_single_color_window)
-        self._single_color_btn.grid(column=0, row=9, columnspan=2, sticky='ew', padx=5, pady=5)
+        self._single_color_btn.grid(column=0, row=10, columnspan=2, sticky='ew', padx=5, pady=5)
         self._single_color_btn.grid_remove()
 
-        curr_row = 10
+        curr_row = 11
 
         # For every slider option in options, option layout is    :    (name, default, from, to)
         defaults = self.bot.settings
@@ -2287,4 +2289,41 @@ class Window:
             traceback.print_exc()
             messagebox.showerror(self.title, f'Failed to open palette window: {str(e)}')
         finally:
+            self._set_busy(False)
+
+    @is_free
+    def start_interactive_mode(self):
+        was_iconified = False
+        try:
+            self.tlabel['text'] = 'Starting Interactive Layer Mode...'
+            if not hasattr(self, '_imname') or not os.path.isfile(self._imname):
+                messagebox.showerror(self.title, "Please load an image first.")
+                self._set_busy(False)
+                return
+            # Check canvas is initialized
+            if not self.bot._canvas:
+                messagebox.showerror(self.title, "Please initialize the canvas in Setup first.")
+                self._set_busy(False)
+                return
+            warning = ("Interactive Layer Mode lets you pick colors from your image and draw them one at a time.\n\n"
+                       "WARNING: This mode is significantly slower than automatic drawing.\n"
+                       "You have full control over flatness and stroke style.\n\n"
+                       "Click the image in the controller to select a color to draw.\n"
+                       "Keyboard shortcuts: Y = Draw, ESC = Close\n\n"
+                       "Continue?")
+            if not messagebox.askyesno(self.title, warning):
+                self._set_busy(False)
+                return
+            from ui.interactive_layer_window import InteractiveLayerController
+            self._root.iconify()
+            was_iconified = True
+            InteractiveLayerController(self._root, self.bot, self._imname, self.draw_options, self._mode)
+            self.tlabel['text'] = 'Interactive Layer Mode completed.'
+        except Exception as e:
+            traceback.print_exc()
+            messagebox.showerror(self.title, f'Interactive Mode failed: {str(e)}')
+        finally:
+            if was_iconified:
+                self._root.deiconify()
+                self._root.wm_state('normal')
             self._set_busy(False)

@@ -38,7 +38,13 @@ pyaint/
 ├── canvas_calibration.py   # Zoom detection via dot measurement
 ├── palette_generator.py    # Color analysis + palette generation
 ├── ui/
-│   ├── window.py           # Main Tkinter GUI
+│   ├── window.py           # Main Tkinter GUI (Notebook tabs + panel wiring)
+│   ├── config_manager.py   # ConfigManager — config.json I/O (batch mode)
+│   ├── thread_manager.py   # ThreadManager/ThreadJob — background tasks
+│   ├── settings_panel.py   # Settings tab
+│   ├── image_panel.py      # Preview tab
+│   ├── action_panel.py     # Actions tab
+│   ├── status_bar.py       # Bottom status line
 │   ├── setup.py            # Configuration wizard
 │   ├── palette_window.py   # Palette generation UI
 │   └── single_color_window.py  # Single Color config window
@@ -66,7 +72,7 @@ pyaint/
 
 ## Path Optimization
 
-- Toggle via **Minimize cursor jumps** checkbox in Control Panel
+- Toggle via **Minimize cursor jumps** checkbox in the Settings tab
 - Greedy nearest-neighbor reorder — each stroke starts near where the last ended
 - Works with all drawing modes
 - If enabled during Pre-compute, optimized order is cached — Start skips re-optimization

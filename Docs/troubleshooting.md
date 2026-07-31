@@ -35,7 +35,7 @@
 - Disable **Use Custom Colors** if not needed
 
 ## Large cursor jumps during drawing
-- Enable **Minimize cursor jumps** checkbox in Control Panel
+- Enable **Minimize cursor jumps** checkbox in the Settings tab
 - Increase **Jump Delay** to add more pause on jumps
 - The path optimization reorders strokes to minimize jumps
 

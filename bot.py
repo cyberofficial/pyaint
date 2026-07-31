@@ -255,6 +255,71 @@ class Bot:
                 print(f"[Color Calibration] Loaded {len(calibration_json)} mapped colors")
             except Exception as e:
                 print(f"[Color Calibration] Error loading calibration data: {e}")
+
+    def apply_tool_config(self, name, data):
+        """Apply a saved tool config from config.json to this bot's state.
+
+        Centralizes the per-tool deserialization that used to live inside
+        Window.load_config / _on_complete_setup. Unknown or malformed
+        entries are skipped with a printed warning instead of raising.
+        """
+        try:
+            if name in ('New Layer', 'Color Button', 'Color Button Okay'):
+                target = {
+                    'New Layer': self.new_layer,
+                    'Color Button': self.color_button,
+                    'Color Button Okay': self.color_button_okay,
+                }[name]
+                coords = data.get('coords')
+                if isinstance(coords, list) and len(coords) >= 2:
+                    target['coords'] = (int(coords[0]), int(coords[1]))
+                elif isinstance(coords, tuple):
+                    target['coords'] = coords
+                target['enabled'] = bool(data.get('enabled', data.get('status', False)))
+                if 'delay' in data:
+                    target['delay'] = float(data.get('delay', 0.1))
+                mods = data.get('modifiers', {})
+                target['modifiers']['ctrl'] = bool(mods.get('ctrl', False))
+                target['modifiers']['alt'] = bool(mods.get('alt', False))
+                target['modifiers']['shift'] = bool(mods.get('shift', False))
+            elif name == 'MSPaint Mode':
+                self.mspaint_mode['enabled'] = bool(data.get('enabled', False))
+                self.mspaint_mode['delay'] = float(data.get('delay', 0.5))
+            elif name == 'Palette':
+                # valid_positions + manual_centers reconstruct a manually
+                # edited palette; otherwise fall back to saved color_coords.
+                if (data.get('box') and data.get('rows') and data.get('cols')
+                        and data.get('valid_positions')):
+                    pbox = data['box']
+                    valid_positions = data['valid_positions']
+                    manual_centers = None
+                    if data.get('manual_centers'):
+                        manual_centers = {int(k): tuple(v) for k, v in data['manual_centers'].items()}
+                    pbox_adj = (pbox[0], pbox[1], pbox[2] - pbox[0], pbox[3] - pbox[1])
+                    self.init_palette(
+                        pbox=pbox_adj,
+                        prows=data['rows'],
+                        pcols=data['cols'],
+                        valid_positions=set(valid_positions),
+                        manual_centers=manual_centers
+                    )
+                elif data.get('color_coords'):
+                    self.init_palette(
+                        colors_pos={
+                            tuple(map(int, k[1:-1].split(', '))): tuple(v)
+                            for k, v in data['color_coords'].items()
+                        }
+                    )
+            elif name == 'Canvas':
+                if data.get('box'):
+                    self.init_canvas(data['box'])
+            elif name == 'Custom Colors':
+                if data.get('box'):
+                    self.init_custom_colors(data['box'])
+            else:
+                print(f"apply_tool_config: unknown tool '{name}'")
+        except Exception as e:
+            print(f"Failed to apply tool config '{name}': {e}")
     
     def _scan_spectrum(self, ccbox):
         """

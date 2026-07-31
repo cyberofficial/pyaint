@@ -64,7 +64,7 @@ For line art and images where background removal is needed:
 
 ## Path Optimization
 
-Toggle **Minimize cursor jumps** in the Control Panel. When enabled:
+Toggle **Minimize cursor jumps** in the Settings tab. When enabled:
 - Stroke order is optimized per color group using nearest-neighbor algorithm
 - Can reverse stroke direction for shorter cursor travel
 - Eliminates scanline jump patterns

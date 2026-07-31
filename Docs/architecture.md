@@ -89,13 +89,15 @@ Exports to GIMP-compatible CSS.
 
 ### `ui/window.py` — Main GUI
 
-~4000-line Tkinter window with:
-- **Control Panel** (left): settings sliders, checkboxes, action buttons, mode selector
-- **Preview Panel** (right): image display, URL/file input
-- **Tooltip Panel** (bottom): status messages, progress
-- `_process_image()` helper that routes to `process()` or `process_single_color()` based on `_mode`
+~1100-line Tkinter window with a `ttk.Notebook` layout and dedicated panels:
+- **Settings tab** (`ui/settings_panel.py`): draw-mode selector, sliders, misc checkboxes, feature toggles
+- **Preview tab** (`ui/image_panel.py`): image display, URL/file input
+- **Actions tab** (`ui/action_panel.py`): action buttons, redraw region, file management
+- **StatusBar** (`ui/status_bar.py`): bottom status messages, progress updates
+- `_process_image()` helper routes to `process()` or `process_single_color()` based on `_mode`
 - `@is_free` decorator prevents concurrent operations
-- Config save/load via `config.json`
+- Config persistence delegated to `ConfigManager` (`ui/config_manager.py`); `Window.tools` is a live alias of its data dict
+- Background operations run through `ThreadManager` (`ui/thread_manager.py`); panel state is exposed via the `_mode`, `draw_options`, and `_imname` properties
 
 ### `ui/setup.py` — Configuration Wizard
 
@@ -136,13 +138,14 @@ This eliminates the "scanline" jumping that makes raster-order drawing look robo
 
 ## Configuration
 
-All settings persist to `config.json`. A `resource_path()` helper ensures correct file resolution in both development and PyInstaller builds. Config is auto-saved on any toggle, slider change, or setup action.
+All settings persist to `config.json`. A `resource_path()` helper ensures correct file resolution in both development and PyInstaller builds. `ConfigManager` (`ui/config_manager.py`) is the single I/O point: it auto-saves on any mutation, and `begin_batch()`/`end_batch()` suppress saves during initialization. Config is auto-saved on any toggle, slider change, or setup action.
 
 ## Threading
 
-Long operations run via `threading.Thread`:
+Long operations run via background threads launched by `ThreadManager` (`ui/thread_manager.py`), which polls them through `root.after`:
 - Pre-compute, Test Draw, Simple Test Draw, Full Draw, Calibration
-- `@is_free` decorator in window.py prevents concurrent operations
+- `@is_free` decorator in window.py prevents concurrent operations; thread targets clear the `busy` flag in their `finally`
+- Jobs with bespoke progress UIs (calibration overlay) supply a custom `poll_fn`
 - Progress overlay shows stroke count + ETA during drawing
 
 ## Error Handling

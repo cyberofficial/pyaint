@@ -182,22 +182,28 @@ Window(title, bot, width, height, screen_x, screen_y)
 
 | Method | Description |
 |--------|-------------|
-| `load_config()` | Load settings from config.json |
+| `load_config()` | Load settings from config.json via ConfigManager |
 | `_process_image()` | Route to process() or process_single_color() based on `_mode` |
-| `start_precompute_thread()` | Pre-compute in background thread |
-| `start_test_draw_thread()` | Test draw in background thread |
-| `start_draw_thread()` | Full draw in background thread |
-| `start_simple_test_draw_thread()` | Simple 5-line test |
-| `start_calibration_thread()` | Color calibration in background |
-| `_on_check(index, option)` | Toggle drawing option checkboxes |
-| `_on_newlayer_toggle()` / `_on_colorbutton_toggle()` / etc. | Tool toggle handlers |
+| `start_precompute_thread()` | Pre-compute in background thread (ThreadManager) |
+| `start_test_draw_thread()` | Test draw in background thread (ThreadManager) |
+| `start_draw_thread()` | Full draw in background thread (ThreadManager) |
+| `start_simple_test_draw_thread()` | Simple 5-line test (ThreadManager) |
+| `start_calibration_thread()` | Color calibration in background (ThreadManager + custom poll) |
 | `_open_single_color_window()` | Open Single Color config (prevents duplicates) |
 
 ### UI Panels
 
-- **Control Panel** (left): Settings sliders, checkboxes, mode dropdown, action buttons
-- **Preview Panel** (right): Image display, URL/file input
-- **Tooltip Panel** (bottom): Status messages, progress updates
+The main window is a `ttk.Notebook` with three tabs plus a status bar:
+
+- **Settings tab** (`SettingsPanel`): Draw Mode dropdown, sliders, misc checkboxes, feature toggles
+- **Preview tab** (`ImagePanel`): image display, URL/file input
+- **Actions tab** (`ActionPanel`): action buttons, redraw region, file management
+- **StatusBar**: status messages, progress updates (replaces the old `tlabel`)
+
+Shared services:
+
+- `ConfigManager` (`ui/config_manager.py`) — config.json read/write with batch mode
+- `ThreadManager` / `ThreadJob` (`ui/thread_manager.py`) — background task polling via `root.after`
 
 ## SetupWindow Class (`ui/setup.py`)
 

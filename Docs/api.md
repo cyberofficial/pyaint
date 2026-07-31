@@ -249,8 +249,7 @@ Color palette generator with algorithm selection and GIMP CSS export.
 CanvasCalibrator(canvas_coords)
 ```
 
-- `dot_size_from_screenshot(center_x, center_y)` — measure a dot on canvas
-- `measure_spacing(center_pos, intended_spacing)` — measure cross-pattern spacing
+- `measure_dot_from_diff(screenshot_before, screenshot_after)` — diff two screenshots to measure a drawn dot's bounding box
 
 ## ColorPaletteGenerator Class (`palette_generator.py`)
 
@@ -271,7 +270,7 @@ ColorPaletteGenerator(image_path, ignore_white=True)
 ## `run_calibration()` (`canvas_calibration.py`)
 
 ```python
-run_calibration(canvas_coords, intended_spacing, user_brush_size) -> dict
+run_calibration(canvas_coords, brush_size) -> dict
 ```
 
-Full canvas calibration: draws cross-pattern, measures spacing, returns scale factor.
+Single-dot canvas calibration: captures the blank canvas, draws one dot at the center, diffs the screenshots to measure the dot's rendered size, and returns the scale factor (measured_size / brush_size).

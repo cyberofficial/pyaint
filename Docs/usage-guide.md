@@ -20,7 +20,7 @@ Click **Setup** to open the configuration wizard. Each tool has an **Initialize*
 
 1. Click **Initialize**
 2. Click upper-left → lower-right corners of your drawing area
-3. (Optional) Run **Calibrate Canvas** — draws a cross-pattern, measures spacing, calculates zoom scale factor
+3. (Optional) Run **Calibrate Canvas** — draws a single dot at the center, diffs before/after screenshots, calculates the zoom scale factor
 
 ### Custom Colors (Optional)
 
@@ -78,8 +78,8 @@ Detects zoom level and brush size for consistent results:
 1. Draw a test line to set your brush size
 2. In Setup, click **Calibrate Canvas**
 3. Click upper-left → lower-right of your canvas
-4. Bot draws 9 dots in a cross pattern
-5. Measures actual spacing via screenshot
+4. Bot draws 1 dot at the center (make sure the canvas is clear first)
+5. Measures the dot's actual size via before/after screenshot diff
 6. Calculates scale factor applied to pixel size during drawing
 
 ## Color Calibration

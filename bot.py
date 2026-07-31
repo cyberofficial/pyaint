@@ -313,6 +313,32 @@ class Bot:
             elif name == 'Canvas':
                 if data.get('box'):
                     self.init_canvas(data['box'])
+                # Load saved canvas calibration (scale factor) into bot state.
+                # Validate: finite float within a sane range so a hand-edited
+                # config cannot crash the draw pipeline (step = STEP * scale).
+                calib = data.get('calibration') or {}
+                try:
+                    raw_scale = float(calib['scale_factor'])
+                except (KeyError, TypeError, ValueError):
+                    raw_scale = 0.0
+                if 0.05 <= raw_scale <= 20.0:
+                    try:
+                        brush_size = int(calib.get('user_brush_size') or calib.get('intended_spacing') or 1)
+                    except (TypeError, ValueError):
+                        brush_size = 1
+                    dot_size = calib.get('dot_size')
+                    if (isinstance(dot_size, (list, tuple)) and len(dot_size) == 2
+                            and all(isinstance(v, (int, float)) for v in dot_size)):
+                        measured_size = tuple(int(v) for v in dot_size)
+                    else:
+                        measured_size = (0, 0)
+                    self.canvas_calibration = {
+                        'scale_factor': raw_scale,
+                        'measured_size': measured_size,
+                        'intended_size': (brush_size, brush_size),
+                        'calibration_date': calib.get('calibration_date'),
+                    }
+                    print(f"[CanvasCalibration] Loaded scale factor: {raw_scale:.3f}")
             elif name == 'Custom Colors':
                 if data.get('box'):
                     self.init_custom_colors(data['box'])
@@ -679,6 +705,7 @@ class Bot:
         scale_factor = self.canvas_calibration.get('scale_factor', 1.0)
         if scale_factor != 1.0:
             step = int(round(self.settings[Bot.STEP] * scale_factor))
+            step = max(1, step)  # never allow a zero/negative step
             print(f"[CanvasCalibration] Applied calibration scale factor: {scale_factor:.3f}")
             print(f"[CanvasCalibration] Original pixel size: {self.settings[Bot.STEP]}")
             print(f"[CanvasCalibration] Adjusted pixel size: {step}")
@@ -827,6 +854,7 @@ class Bot:
         scale_factor = self.canvas_calibration.get('scale_factor', 1.0)
         if scale_factor != 1.0:
             step = int(round(self.settings[Bot.STEP] * scale_factor))
+            step = max(1, step)  # never allow a zero/negative step
             print(f"[CanvasCalibration] Applied calibration scale factor: {scale_factor:.3f}")
         else:
             step = int(self.settings[Bot.STEP])
@@ -2045,6 +2073,12 @@ class Bot:
 
         self.terminate = False
         step = int(self.settings[Bot.STEP])
+        # Apply canvas calibration scale factor (same as the full-canvas paths)
+        scale_factor = self.canvas_calibration.get('scale_factor', 1.0)
+        if scale_factor != 1.0:
+            step = int(round(step * scale_factor))
+            step = max(1, step)  # never allow a zero/negative step
+            print(f"[CanvasCalibration] Applied calibration scale factor: {scale_factor:.3f}")
         img = Image.open(file).convert('RGBA')
 
         # Crop the image to the specified region
@@ -2506,45 +2540,6 @@ class Bot:
         print(f"[CanvasCalibration] Checkerboard pattern drawn")
     
 
-    
-    def apply_canvas_calibration(self):
-        '''
-        Apply the canvas calibration scale factor to the current drawing settings.
-        Returns the effective pixel size after applying calibration.
-        
-        LOGIC:
-        - Scale factor > 1 means canvas is ZOOMED OUT (pixels appear larger)
-        - Scale factor < 1 means canvas is ZOOMED IN (pixels appear smaller)
-        - We need to adjust pixel size in OPPOSITE direction:
-          * If scale > 1, decrease pixel size (divide)
-          * If scale < 1, increase pixel size (multiply >1)
-        - Example: measured=24px, intended=10px, scale=2.4
-          Canvas is zoomed to 240%, we need SMALLER effective pixels
-        '''
-        scale_factor = self.canvas_calibration.get('scale_factor', 1.0)
-        
-        # Apply to pixel size (step size)
-        original_step = self.settings[Bot.STEP]
-        
-        # Calculate effective step based on scale direction
-        if scale_factor > 1.0:
-            # Canvas is zoomed out - use smaller pixel size
-            effective_step = int(round(original_step / scale_factor))
-            effective_step = max(1, effective_step)  # Minimum 1
-        elif scale_factor < 1.0:
-            # Canvas is zoomed in - use larger pixel size
-            effective_step = int(round(original_step / scale_factor))
-            effective_step = max(1, effective_step)  # Minimum 1
-        else:
-            # Scale factor is 1.0 (no calibration or perfect match)
-            effective_step = original_step
-        
-        print(f"[CanvasCalibration] Applying calibration:")
-        print(f"[CanvasCalibration] Original pixel size: {original_step}")
-        print(f"[CanvasCalibration] Scale factor: {scale_factor:.4f}")
-        print(f"[CanvasCalibration] Effective pixel size: {effective_step}")
-        
-        return effective_step
     
     def save_canvas_calibration(self, filepath='canvas_calibration.json'):
         '''

@@ -75,7 +75,7 @@ Contains `Palette` and `Bot` classes.
 
 ### `canvas_calibration.py`
 
-`CanvasCalibrator` class: draws a 9-dot cross-pattern on canvas, measures the actual spacing via screenshot analysis, calculates a scale factor for zoom/brush-size compensation.
+`CanvasCalibrator` class: draws a single dot at the canvas center, diffs before/after screenshots to measure its rendered size, and calculates a scale factor (measured_size / brush_size) for zoom/brush-size compensation.
 
 ### `palette_generator.py`
 

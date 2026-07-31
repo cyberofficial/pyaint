@@ -21,7 +21,7 @@ python main.py
 - **3 Drawing Modes**: Slotted (fast), Layered (quality), Single Color (line art)
 - **Path Optimization**: Reorders strokes so the cursor flows naturally
 - **Custom Colors**: Spectrum-based color matching with calibration
-- **Canvas Calibration**: Auto-detect zoom via cross-pattern measurement  
+- **Canvas Calibration**: Auto-detect zoom via single-dot measurement  
 - **Pre-compute Cache**: Process once, draw instantly on rerun
 - **Pause/Resume**: Mid-stroke recovery from exact interruption point
 - **Region Redraw**: Select part of the image to redraw only

@@ -18,14 +18,14 @@ An intelligent drawing automation tool that converts images into precise mouse m
 - **Dual Input** - Load images from local files or URLs
 - **High Precision** - Near-perfect color accuracy with customizable settings
 - **Smart Caching** - Pre-compute for instant subsequent runs
-- **Pause & Resume** - Mid-stroke recovery from exact interruption point
+- **Pause & Resume** - Pause after completing the current stroke; the stroke is replayed when you resume
 - **Advanced Palette Config** - Manual or automatic color center positioning
 - **Color Calibration** - Spectrum scanning for accurate custom colors
 - **File Management** - Remove calibration data and reset configuration with UI buttons
 
 ## Installation
 
-**Requirements:** Python 3.8+ • Windows
+**Requirements:** Python 3.12 • Windows
 
 ```bash
 # Clone the repo
@@ -33,7 +33,7 @@ git clone https://github.com/Trev241/pyaint.git
 cd pyaint
 
 # (Optional) Create virtual environment
-conda create -n pyaint python=3.8
+conda create -n pyaint python=3.12
 conda activate pyaint
 
 # Install dependencies
@@ -69,7 +69,7 @@ python main.py
 | Setting | Range | Description |
 |---------|-------|-------------|
 | **Delay** | 0.01-10.0s | Time between strokes |
-| **Pixel Size** | 3-50px | Detail level (lower = more detail) |
+| **Pixel Size** | 1-50px | Detail level (lower = more detail) |
 | **Precision** | 0.0-1.0 | Color accuracy |
 | **Jump Delay** | 0.0-2.0s | Cursor movement optimization |
 
@@ -77,6 +77,7 @@ python main.py
 
 - **Slotted** - Fast processing, simple mapping
 - **Layered** - Better results, color frequency sorting
+- **Single Color** - Ignore a picked background color (within a tolerance) and draw the remaining pixels with your manually selected brush color
 
 ### Options
 
@@ -108,15 +109,6 @@ Automatically calculate grid centers using cell dimensions. Quick but less accur
 - "Back to Grid" to adjust dimensions
 - "Extract Colors" to finalize and return to main application
 
-**Key Differences:**
-| Feature | Old Precision Estimate | New Interactive Extraction |
-|---------|---------------------|-------------------------|
-| User experience | Click 5-6 reference points | Click anywhere, enter grid number |
-| Anchor limit | Exactly 4 required | Unlimited - add as many as needed |
-| Flexibility | Fixed sequence | Add anywhere, adjust anytime |
-| Accuracy | Linear/bilinear interpolation | Smart interpolation from all anchors |
-| Recovery | None | Auto-saves to temp file, restores on restart |
-
 #### Toggle Valid/Invalid
 Mark color cells as active (green) or inactive (red).
 
@@ -124,13 +116,21 @@ Mark color cells as active (green) or inactive (red).
 
 ```
 pyaint/
-├── main.py          # Entry point
-├── bot.py           # Drawing engine & image processing
+├── main.py                    # Entry point — keyboard listener + main window
+├── bot.py                     # Drawing engine & image processing
 ├── ui/
-│   ├── window.py    # GUI interface
-│   └── setup.py     # Configuration wizard
-├── utils.py         # Utilities
-└── config.json      # Settings storage
+│   ├── window.py              # Main GUI
+│   ├── setup.py               # Configuration wizard
+│   ├── palette_window.py      # Palette generation UI
+│   ├── single_color_window.py # Single Color configuration UI
+│   ├── interactive_layer_window.py  # Interactive Layer Mode controller
+│   └── flatten_window.py      # Color flattening tool (not wired into main UI)
+├── canvas_calibration.py      # Canvas zoom calibration via dot measurement
+├── palette_generator.py       # Color analysis & palette generation
+├── utils.py                   # Utilities
+├── exceptions.py              # Custom error types
+├── config.json                # Settings storage
+└── color_calibration.json     # Custom-color RGB→position map (generated)
 ```
 
 ## Color Calibration
@@ -140,7 +140,7 @@ Precise color matching for custom colors using spectrum scanning.
 **How it works:**
 1. Scans color spectrum grid, capturing RGB values at each position
 2. Saves data to `color_calibration.json` for reuse
-3. Uses exact match (tolerance-based) → falls back to nearest Euclidean match
+3. Uses exact match (tolerance-based) → falls back to k-nearest weighted position interpolation
 **Calibration Step:** 1-10 pixels  
 - **1-3**: High accuracy, slower  
 - **5-10**: Faster calibration
@@ -151,7 +151,7 @@ Precise color matching for custom colors using spectrum scanning.
 |-------|----------|
 | Drawing not starting | Verify palette & canvas are initialized |
 | Colors incorrect | Check custom colors setup & precision |
-| Slow performance | Reduce pixel size or increase delay |
+| Slow performance | Increase pixel size (fewer strokes) |
 | Application unresponsive | Press `ESC` to stop & restart |
 
 **Tips:**
@@ -170,8 +170,9 @@ Precise color matching for custom colors using spectrum scanning.
 
 - **PyAutoGUI** - GUI automation
 - **Pillow** - Image processing
-- **pynput** - Keyboard monitoring
-- **NumPy** - Math computations
+- **pynput** - Keyboard monitoring & mouse listeners
+- **keyboard** - Keyboard input
+- **pyscreeze** - Screenshot support
 
 ## Videos
 
@@ -185,7 +186,7 @@ Demonstrates custom color calibration
 
 https://github.com/user-attachments/assets/50f2f344-8ca9-439b-8722-0175356ad59e
 
-> **Note:** Calibration is recommended but not required. Calibrate once per app, or let Pyaint match via Euclidean search.
+> **Note:** Calibration is recommended but not required. Calibrate once per app, or let Pyaint fall back to its nearest-position lookup.
 
 ## License
 

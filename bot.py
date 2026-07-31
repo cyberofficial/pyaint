@@ -103,6 +103,7 @@ class Bot:
 
     IGNORE_WHITE = 1 << 0
     USE_CUSTOM_COLORS = 1 << 1
+    USE_COLOR_PICKER = 1 << 2
 
     def __init__(self, config_file='config.json'):
         self.terminate = False
@@ -166,6 +167,12 @@ class Bot:
         self.mspaint_mode = {
             'enabled': False,         # whether the feature is active
             'delay': 0.5              # delay between clicks in seconds (default 0.5)
+        }
+
+        # Color Picker Mode state (GIMP-style eye dropper)
+        self.color_picker = {
+            'enabled': False,   # whether the feature is active
+            'coords': None,     # [x, y] location of the dropper button in the paint app
         }
 
         # Single Color mode state
@@ -285,6 +292,17 @@ class Bot:
             elif name == 'MSPaint Mode':
                 self.mspaint_mode['enabled'] = bool(data.get('enabled', False))
                 self.mspaint_mode['delay'] = float(data.get('delay', 0.5))
+            elif name == 'Color Picker':
+                coords = data.get('coords')
+                if isinstance(coords, list) and len(coords) >= 2:
+                    self.color_picker['coords'] = (int(coords[0]), int(coords[1]))
+                elif isinstance(coords, tuple):
+                    self.color_picker['coords'] = coords
+                # 'enabled' is intentionally NOT loaded here: the active MODE
+                # has a single source of truth — the drawing option
+                # 'use_color_picker' (settings checkbox), applied by
+                # SettingsPanel.load_from_config. Setup status only records
+                # that the dropper location is captured.
             elif name == 'Palette':
                 # valid_positions + manual_centers reconstruct a manually
                 # edited palette; otherwise fall back to saved color_coords.
@@ -767,7 +785,10 @@ class Bot:
                 # DESIGNATING COLOR OF THE CURRENT PIXEL
                 # Deciding what to do with new RGB triplet
                 if (r, g, b) not in nearest_colors:
-                    if flags & Bot.USE_CUSTOM_COLORS:
+                    if flags & Bot.USE_COLOR_PICKER:
+                        # 1:1 — the eye dropper picks the exact image color
+                        col = (r, g, b)
+                    elif flags & Bot.USE_CUSTOM_COLORS:
                         # # Find the nearest custom color previously used, if any
                         # if len(cmap.keys()) > 0:
                         #     near = min(cmap.keys(), key=lambda c : Palette.dist(c, near))
@@ -883,8 +904,8 @@ class Bot:
         interval_size = max((1 - self.settings[Bot.ACCURACY]) * 255, 1)
         tol_sq = tolerance ** 2
 
-        # Guard against missing palette (only needed when not using custom colors)
-        if not (flags & Bot.USE_CUSTOM_COLORS) and (not hasattr(self, '_palette') or self._palette is None):
+        # Guard against missing palette (only needed when not using custom colors or the picker)
+        if not (flags & (Bot.USE_CUSTOM_COLORS | Bot.USE_COLOR_PICKER)) and (not hasattr(self, '_palette') or self._palette is None):
             raise NoPaletteError('Bot could not continue because palette is not initialized')
 
         old_col = None
@@ -916,7 +937,10 @@ class Bot:
 
                 near = (r, g, b)
                 if (r, g, b) not in nearest_colors:
-                    if flags & Bot.USE_CUSTOM_COLORS:
+                    if flags & Bot.USE_COLOR_PICKER:
+                        # 1:1 — the eye dropper picks the exact image color
+                        col = (r, g, b)
+                    elif flags & Bot.USE_CUSTOM_COLORS:
                         # Quantize via precision, use quantized color directly
                         col = tuple(min(int(round(v / interval_size) * interval_size), 255) for v in near)
                     else:
@@ -1292,8 +1316,30 @@ class Bot:
             # Only perform automatic color selection if NOT in Single Color mode
             # In Single Color mode, the user picks their brush color manually
             if not self.single_color_mode_active and not self.color_button_okay.get('enabled', False):
+                # Color Picker Mode: click the app's dropper button, then click
+                # the center of an always-on-top swatch filled with the target
+                # color so the app's dropper samples it (1:1 exact colors)
+                if self.color_picker.get('enabled') and self.color_picker.get('coords'):
+                    dx, dy = self.color_picker['coords']
+                    print(f"[ColorPicker] Picking color {c} via dropper at {(dx, dy)}")
+                    try:
+                        pyautogui.click((dx, dy))
+                        time.sleep(0.2)
+                        pos = self._find_swatch_position((dx, dy))
+                        self.show_color_swatch(c, pos)
+                        time.sleep(0.15)
+                        cx = pos[0] + self.SWATCH_SIZE // 2
+                        cy = pos[1] + self.SWATCH_SIZE // 2
+                        pyautogui.click((cx, cy))
+                        time.sleep(0.2)
+                    finally:
+                        # Never leave the topmost swatch stuck on screen
+                        self.hide_color_swatch()
+                    delay = self.color_button.get('delay', 0.1)
+                    print(f"[ColorPicker] waiting {delay} seconds after color pick...")
+                    time.sleep(delay)
                 # Check if palette exists and color is in palette before accessing it
-                if self._palette is not None and c in self._palette.colors:
+                elif self._palette is not None and c in self._palette.colors:
                     px, py = self._palette.colors_pos[c]
                     print(f"[DEBUG] Using palette click at: {(px, py)}")
                     
@@ -1692,8 +1738,27 @@ class Bot:
             # Only perform automatic color selection if Color Button Okay is NOT enabled
             # When Color Button Okay is enabled, user is expected to manually select the color
             if not self.single_color_mode_active and not self.color_button_okay.get('enabled', False):
+                # Color Picker Mode: dropper button + swatch sample (same as full draw)
+                if self.color_picker.get('enabled') and self.color_picker.get('coords'):
+                    dx, dy = self.color_picker['coords']
+                    print(f"[ColorPicker] Picking color {c} via dropper at {(dx, dy)}")
+                    try:
+                        pyautogui.click((dx, dy))
+                        time.sleep(0.2)
+                        pos = self._find_swatch_position((dx, dy))
+                        self.show_color_swatch(c, pos)
+                        time.sleep(0.15)
+                        cx = pos[0] + self.SWATCH_SIZE // 2
+                        cy = pos[1] + self.SWATCH_SIZE // 2
+                        pyautogui.click((cx, cy))
+                        time.sleep(0.2)
+                    finally:
+                        # Never leave the topmost swatch stuck on screen
+                        self.hide_color_swatch()
+                    delay = self.color_button.get('delay', 0.1)
+                    time.sleep(delay)
                 # Check if palette exists and color is in palette before accessing it
-                if self._palette is not None and c in self._palette.colors:
+                elif self._palette is not None and c in self._palette.colors:
                     px, py = self._palette.colors_pos[c]
                     print(f"[DEBUG] Using palette click at: {(px, py)}")
                     # Use mouseDown/mouseUp with delay for more reliable clicks (like color button mode)
@@ -1926,6 +1991,10 @@ class Bot:
             # Add color switching overhead (~0.5 seconds per color)
             num_colors = len(cmap)
             estimated_seconds += num_colors * 0.5
+
+            # Color Picker Mode adds a dropper click + swatch click + delays per color
+            if self.color_picker.get('enabled') and self.color_picker.get('coords'):
+                estimated_seconds += num_colors * 2.0
 
             return estimated_seconds
 
@@ -2169,7 +2238,10 @@ class Bot:
                 # DESIGNATING COLOR OF THE CURRENT PIXEL
                 # Deciding what to do with new RGB triplet
                 if (r, g, b) not in nearest_colors:
-                    if flags & Bot.USE_CUSTOM_COLORS:
+                    if flags & Bot.USE_COLOR_PICKER:
+                        # 1:1 — the eye dropper picks the exact image color
+                        col = (r, g, b)
+                    elif flags & Bot.USE_CUSTOM_COLORS:
                         # Obtain the closest color
                         # round(color_component / interval_size) * interval_size
                         col = tuple(min(int(round(v / interval_size) * interval_size), 255) for v in col)
@@ -2402,6 +2474,114 @@ class Bot:
                 self.overlay_window = None
                 self.overlay_label = None
                 self.overlay_frame = None
+
+    # ------------------------------------------------------------------
+    # Color Picker Mode — always-on-top color swatch
+    # ------------------------------------------------------------------
+
+    SWATCH_SIZE = 64
+
+    def _defined_boxes(self):
+        """Screen areas the swatch must not overlap (user-defined tools)."""
+        boxes = []
+        if self._canvas:
+            cx, cy, cw, ch = self._canvas
+            boxes.append((cx, cy, cx + cw, cy + ch))
+        if self._custom_colors:
+            cx, cy, cw, ch = self._custom_colors
+            boxes.append((cx, cy, cx + cw, cy + ch))
+        if self._palette is not None and getattr(self._palette, 'box', None):
+            px, py, pw, ph = self._palette.box
+            boxes.append((px, py, px + pw, py + ph))
+        for tool in (self.color_picker, self.new_layer, self.color_button, self.color_button_okay):
+            coords = tool.get('coords') if isinstance(tool, dict) else None
+            if coords:
+                boxes.append((coords[0], coords[1], coords[0] + 1, coords[1] + 1))
+        return boxes
+
+    def _rect_overlaps(self, rect, boxes):
+        """Check if rect (x, y, w, h) overlaps any box (x1, y1, x2, y2)."""
+        rx, ry, rw, rh = rect
+        for bx1, by1, bx2, by2 in boxes:
+            if not (rx + rw <= bx1 or rx >= bx2 or ry + rh <= by1 or ry >= by2):
+                return True
+        return False
+
+    def _find_swatch_position(self, dropper_xy, screen_size=None):
+        """
+        Find a free spot for the SWATCH_SIZE swatch, near the dropper button.
+
+        Tries offsets around the dropper location, then falls back to screen
+        corners. Pure logic (no GUI side effects) so it can be unit-tested.
+
+        Parameters:
+            dropper_xy: (x, y) screen position of the paint app's dropper button
+            screen_size: optional (width, height); defaults to the primary
+                screen size or 1920x1080 when no Tk root exists
+
+        Returns:
+            (x, y) top-left position of the swatch window
+        """
+        size = self.SWATCH_SIZE
+        dx, dy = dropper_xy
+        if screen_size is None:
+            try:
+                root = tk._default_root
+                screen_size = (root.winfo_screenwidth(), root.winfo_screenheight()) if root else (1920, 1080)
+            except Exception:
+                screen_size = (1920, 1080)
+        screen_w, screen_h = screen_size
+
+        boxes = self._defined_boxes()
+        candidates = []
+        # Offsets around the dropper button, growing outward
+        for step in range(1, 6):
+            for ox, oy in ((step * 48, step * 48), (step * 48, -step * 48),
+                           (-step * 48, step * 48), (-step * 48, -step * 48),
+                           (0, -step * 48), (0, step * 48),
+                           (step * 48, 0), (-step * 48, 0)):
+                candidates.append((dx + ox, dy + oy))
+        # Fallbacks: screen corners (top-right first)
+        candidates += [(screen_w - size - 20, 20), (20, 20),
+                       (screen_w - size - 20, screen_h - size - 60),
+                       (20, screen_h - size - 60)]
+
+        for x, y in candidates:
+            x = max(0, min(x, screen_w - size))
+            y = max(0, min(y, screen_h - size))
+            if not self._rect_overlaps((x, y, size, size), boxes):
+                return (x, y)
+        # Last resort: top-right corner even if overlapping
+        return (max(0, screen_w - size - 20), 20)
+
+    def show_color_swatch(self, rgb, position):
+        """Show an always-on-top SWATCH_SIZE window filled with the color."""
+        try:
+            self.hide_color_swatch()
+            x, y = position
+            size = self.SWATCH_SIZE
+            self._swatch_window = tk.Toplevel()
+            self._swatch_window.title("pyaint Color Swatch")
+            self._swatch_window.attributes("-topmost", True)
+            self._swatch_window.overrideredirect(True)
+            self._swatch_window.geometry(f"{size}x{size}+{x}+{y}")
+            color_hex = '#%02x%02x%02x' % tuple(int(v) for v in rgb[:3])
+            self._swatch_frame = tk.Frame(self._swatch_window, bg=color_hex,
+                                          width=size, height=size)
+            self._swatch_frame.pack(fill=tk.BOTH, expand=True)
+            self._swatch_window.update()
+        except Exception as e:
+            print(f"[ColorPicker] Error showing swatch: {e}")
+
+    def hide_color_swatch(self):
+        """Hide and destroy the color swatch window."""
+        try:
+            if getattr(self, '_swatch_window', None) is not None:
+                self._swatch_window.destroy()
+                self._swatch_window = None
+                self._swatch_frame = None
+        except Exception as e:
+            print(f"[ColorPicker] Error hiding swatch: {e}")
 
     def get_cached_status(self, image_path, flags=0, mode=LAYERED):
         """Check if valid cached computation exists"""

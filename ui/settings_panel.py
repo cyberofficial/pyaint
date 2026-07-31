@@ -34,7 +34,8 @@ class SettingsPanel(Frame):
 
     _MISC_TOOLTIPS = (
         'Ignores and does not draw the white pixels of an image. Useful for when the canvas is white.',
-        'Use custom colors. This option considerably lengthens the draw duration.'
+        'Use custom colors. This option considerably lengthens the draw duration.',
+        'Use the eye dropper to pick exact 1:1 colors from the image. Mutually exclusive with custom colors.'
     )
 
     def __init__(self, parent, controller, config):
@@ -142,9 +143,9 @@ class SettingsPanel(Frame):
         self._misclbl.grid(column=0, row=curr_row, columnspan=2, padx=5, pady=5, sticky='w')
         curr_row += 1
 
-        misc_opt_names = ('Ignore white pixels', 'Use custom colors')
+        misc_opt_names = ('Ignore white pixels', 'Use custom colors', 'Use Color Picker')
         self._checkbutton_vars = [IntVar() for _ in range(len(misc_opt_names))]
-        options = [self._bot.IGNORE_WHITE, self._bot.USE_CUSTOM_COLORS]
+        options = [self._bot.IGNORE_WHITE, self._bot.USE_CUSTOM_COLORS, self._bot.USE_COLOR_PICKER]
         for i in range(len(misc_opt_names)):
             cb = Checkbutton(self, text=misc_opt_names[i], variable=self._checkbutton_vars[i],
                              command=lambda val=options[i], index=i: self._on_check(index, val))
@@ -239,9 +240,30 @@ class SettingsPanel(Frame):
         else:
             self.draw_options &= ~option
 
+        # Color Picker and Custom Colors are mutually exclusive
+        if option == self._bot.USE_COLOR_PICKER and self._checkbutton_vars[index].get() == 1:
+            self._checkbutton_vars[1].set(0)
+            self.draw_options &= ~self._bot.USE_CUSTOM_COLORS
+        elif option == self._bot.USE_CUSTOM_COLORS and self._checkbutton_vars[index].get() == 1:
+            self._checkbutton_vars[2].set(0)
+            self.draw_options &= ~self._bot.USE_COLOR_PICKER
+
+        # Keep bot.color_picker.enabled in sync — this is the activation gate
+        # the draw()/test_draw() dropper branches check. Runs on BOTH toggle
+        # directions so a stale enabled can never survive a mode switch.
+        if option in (self._bot.USE_COLOR_PICKER, self._bot.USE_CUSTOM_COLORS):
+            enabled = bool(self._checkbutton_vars[2].get())
+            self._bot.color_picker['enabled'] = enabled
+            tool = self._config.get_tool('Color Picker')
+            if not isinstance(tool, dict):
+                tool = {'status': False, 'coords': None, 'enabled': False}
+            tool['enabled'] = enabled
+            self._config.set_tool('Color Picker', tool)
+
         # Save drawing options to config
         self._config.set_drawing_option('ignore_white_pixels', bool(self.draw_options & self._bot.IGNORE_WHITE))
         self._config.set_drawing_option('use_custom_colors', bool(self.draw_options & self._bot.USE_CUSTOM_COLORS))
+        self._config.set_drawing_option('use_color_picker', bool(self.draw_options & self._bot.USE_COLOR_PICKER))
 
     def _on_newlayer_toggle(self):
         enabled = bool(self._newlayer_var.get())
@@ -537,12 +559,30 @@ class SettingsPanel(Frame):
         else:
             self.draw_options &= ~self._bot.IGNORE_WHITE
 
-        use_custom = options.get('use_custom_colors', False)
+        use_custom = options.get('use_custom_colors') is True
         self._checkbutton_vars[1].set(1 if use_custom else 0)
         if use_custom:
             self.draw_options |= self._bot.USE_CUSTOM_COLORS
         else:
             self.draw_options &= ~self._bot.USE_CUSTOM_COLORS
+
+        use_picker = options.get('use_color_picker') is True
+        self._checkbutton_vars[2].set(1 if use_picker else 0)
+        if use_picker:
+            self.draw_options |= self._bot.USE_COLOR_PICKER
+        else:
+            self.draw_options &= ~self._bot.USE_COLOR_PICKER
+
+        # Enforce mutual exclusion if a hand-edited config set both flags
+        if self.draw_options & self._bot.USE_COLOR_PICKER:
+            self._checkbutton_vars[1].set(0)
+            self.draw_options &= ~self._bot.USE_CUSTOM_COLORS
+        elif self.draw_options & self._bot.USE_CUSTOM_COLORS:
+            self._checkbutton_vars[2].set(0)
+            self.draw_options &= ~self._bot.USE_COLOR_PICKER
+
+        # Sync the bot activation gate with the restored flag
+        self._bot.color_picker['enabled'] = bool(self.draw_options & self._bot.USE_COLOR_PICKER)
 
     def refresh_from_bot(self):
         """Sync feature-toggle checkboxes from bot state (after config apply)."""

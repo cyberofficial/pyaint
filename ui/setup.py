@@ -140,8 +140,9 @@ class SetupWindow:
                     mv[name] = iv
                 self._mod_vars[k] = mv
                 
-            elif k == 'color_preview_spot':
-                # Color preview spot doesn't need any extra buttons
+            elif k in ('color_preview_spot', 'Color Picker'):
+                # Color preview spot / Color Picker: single-click point tools,
+                # no preview or extra buttons needed
                 pass
                 
             else:
@@ -307,7 +308,7 @@ class SetupWindow:
         
         # FIXED: Added 'color_preview_spot' to the tuple checking for single-click tools
         # Using the correct configuration key name
-        self._required_clicks = 1 if self._tool_name in ('New Layer', 'Color Button', 'Color Button Okay', 'color_preview_spot') else 2
+        self._required_clicks = 1 if self._tool_name in ('New Layer', 'Color Button', 'Color Button Okay', 'Color Picker', 'color_preview_spot') else 2
         
         prompt = 'Click the location of the button.' if self._required_clicks == 1 else 'Click on the UPPER LEFT and LOWER RIGHT corners of the tool.'
         if messagebox.askokcancel(self.title, prompt, parent=self._root) == True:
@@ -1082,6 +1083,12 @@ class SetupWindow:
                     self._current_tool['coords'] = list(coords)
                     self._current_tool['status'] = True
                     self._statuses[self._tool_name].configure(text='INITIALIZED', background='green')
+
+                # NOTE: No mutual exclusion here. 'Color Picker' and 'Custom
+                # Colors' can both be initialized simultaneously; their stored
+                # locations must persist so the user never re-captures them.
+                # Exclusivity between the two MODES lives in the main-window
+                # settings checkboxes ('Use Color Picker' vs 'Use custom colors').
 
                 self._listener.stop()
                 self.parent.deiconify()

@@ -141,7 +141,7 @@ class Window:
 
         # Apply saved tool configs to bot state
         for tool_name in ('Palette', 'Canvas', 'Custom Colors', 'New Layer',
-                          'Color Button', 'Color Button Okay', 'MSPaint Mode'):
+                          'Color Button', 'Color Button Okay', 'Color Picker', 'MSPaint Mode'):
             self.bot.apply_tool_config(tool_name, self.tools.get(tool_name, {}))
 
         self._settings.refresh_from_bot()
@@ -176,6 +176,12 @@ class Window:
                 'status': False,
                 'box': None,
                 'preview': None,
+            },
+            'Color Picker': {
+                'name': 'Color Picker',
+                'status': False,
+                'coords': None,
+                'enabled': False,
             },
             'New Layer': {
                 'status': False,
@@ -226,7 +232,7 @@ class Window:
         # Build a dedicated setup_tools mapping (only tools) so that
         # SetupWindow doesn't iterate non-tool keys (like drawing_settings).
         setup_tools = {}
-        for tool_name in ['Palette', 'Canvas', 'Custom Colors', 'New Layer', 'Color Button', 'Color Button Okay', 'color_preview_spot']:
+        for tool_name in ['Palette', 'Canvas', 'Custom Colors', 'Color Picker', 'New Layer', 'Color Button', 'Color Button Okay', 'color_preview_spot']:
             existing = self.tools.get(tool_name, {})
             merged = default_tools[tool_name].copy()
             merged.update(existing if isinstance(existing, dict) else {})
@@ -244,7 +250,7 @@ class Window:
 
         # Apply tool configs to bot state
         for tool_name in ('Palette', 'Canvas', 'Custom Colors', 'New Layer',
-                          'Color Button', 'Color Button Okay', 'MSPaint Mode'):
+                          'Color Button', 'Color Button Okay', 'Color Picker', 'MSPaint Mode'):
             self.bot.apply_tool_config(tool_name, self.tools.get(tool_name, {}))
 
         # Sync feature-toggle checkboxes with the new bot state
@@ -302,6 +308,12 @@ class Window:
 
     @is_free
     def start_test_draw_thread(self):
+        # Color Picker Mode requires the dropper button to be configured
+        if (self.draw_options & Bot.USE_COLOR_PICKER
+                and not self.bot.color_picker.get('coords')):
+            messagebox.showerror(self.title, "Color Picker tool not configured. Please run Setup first.")
+            self._set_busy(False)
+            return
         self._threads.start(ThreadJob(
             name='test_draw',
             target=self.test_draw,
@@ -602,6 +614,12 @@ class Window:
 
     @is_free
     def start_draw_thread(self):
+        # Color Picker Mode requires the dropper button to be configured
+        if (self.draw_options & Bot.USE_COLOR_PICKER
+                and not self.bot.color_picker.get('coords')):
+            messagebox.showerror(self.title, "Color Picker tool not configured. Please run Setup first.")
+            self._set_busy(False)
+            return
         self._threads.start(ThreadJob(
             name='draw',
             target=self.start,
